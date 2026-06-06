@@ -1,0 +1,35 @@
+"use client";
+
+import { cn } from "@/lib/utils";
+
+interface WaveReadinessBarProps {
+  readyCount: number;
+  totalCount: number;
+  className?: string;
+}
+
+export function WaveReadinessBar({
+  readyCount,
+  totalCount,
+  className,
+}: WaveReadinessBarProps) {
+  const percent =
+    totalCount === 0 ? 0 : Math.round((readyCount / totalCount) * 100);
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">Wave payout readiness</span>
+        <span className="text-muted-foreground">
+          {readyCount}/{totalCount} ready ({percent}%)
+        </span>
+      </div>
+      <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-stellar-purple to-stellar-cyan transition-all duration-500"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,218 @@
+# Architecture
+
+This document describes how **TrustBridge Dashboard** is designed. For setup instructions see [SETUP.md](./SETUP.md). For directory layout see [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md).
+
+← Back to [README](../README.md)
+
+---
+
+## Overview
+
+TrustBridge Dashboard is a **Next.js 14 App Router** application that solves contributor payout coordination on Stellar:
+
+```
+GitHub Identity  ──►  Registration DB  ──►  Horizon Validation  ──►  Wave CSV Export
+     (OAuth)            (Prisma/PG)         (stellar-sdk)            (Maintainers)
+```
+
+### Core responsibilities
+
+1. **Identity binding** — Map `github_username` → `stellar_address` after GitHub OAuth
+2. **Readiness validation** — Query Horizon for funding, USDC trustline, XLM balance
+3. **Maintainer operations** — Aggregate view, filters, batch re-check, CSV export
+
+---
+
+## System diagram
+
+```mermaid
+flowchart TB
+  subgraph Client["Browser"]
+    LP[Landing Page]
+    REG[Register Page]
+    DASH[Dashboard Page]
+  end
+
+  subgraph NextJS["Next.js App Router"]
+    MW[Middleware]
+    API_AUTH["/api/auth"]
+    API_CHECK["/api/check"]
+    API_REG["/api/register"]
+    API_CONT["/api/contributors"]
+  end
+
+  subgraph External["External Services"]
+    GH[GitHub OAuth API]
+    HZ[Stellar Horizon]
+  end
+
+  subgraph Data["Data Layer"]
+    PG[(PostgreSQL)]
+  end
+
+  LP --> API_CONT
+  REG --> MW
+  DASH --> MW
+  MW --> API_AUTH
+  REG --> API_CHECK
+  REG --> API_REG
+  DASH --> API_CONT
+  API_AUTH --> GH
+  API_CHECK --> HZ
+  API_REG --> PG
+  API_REG --> HZ
+  API_CONT --> PG
+  API_CONT --> HZ
+```
+
+---
+
+## Authentication & authorization
+
+### GitHub OAuth (NextAuth.js)
+
+- Provider: GitHub with scopes `read:user`, `user:email`, `read:org`
+- Session strategy: **JWT** (no server-side session table required at runtime)
+- On sign-in, user record is upserted in PostgreSQL with `githubId`, `githubUsername`, and `accessToken`
+
+### Route protection (`src/middleware.ts`)
+
+| Route | Requirement |
+|-------|-------------|
+| `/register` | Authenticated GitHub user |
+| `/dashboard` | Authenticated + member of `GITHUB_MAINTAINER_ORG` |
+
+Maintainer check flow:
+
+1. After GitHub OAuth, JWT callback calls `GET https://api.github.com/user/orgs`
+2. Compares org logins against `GITHUB_MAINTAINER_ORG`
+3. Sets `session.user.isMaintainer` boolean
+
+Non-maintainers hitting `/dashboard` are redirected to `/register?error=maintainer`.
+
+---
+
+## Data model
+
+See `prisma/schema.prisma`.
+
+```
+User
+├── githubId (unique)
+├── githubUsername (unique)
+├── accessToken
+└── registration → Registration (1:1)
+
+Registration
+├── stellarAddress (unique)
+├── funded, trustlineReady, xlmBalance
+└── lastCheckedAt
+```
+
+NextAuth adapter models (`Account`, `Session`, `VerificationToken`) are included for future database-session support but JWT is used by default.
+
+---
+
+## Horizon validation pipeline
+
+Implemented in `src/lib/horizon.ts` using **stellar-sdk** `Horizon.Server`.
+
+### `/api/check` flow
+
+1. Validate G-address format via `StrKey.isValidEd25519PublicKey`
+2. `server.loadAccount(address)` — 404 means unfunded
+3. Parse native XLM balance from `account.balances`
+4. Check for matching asset trustline (`asset_code` + `asset_issuer`)
+5. Compute readiness via `computeReadiness()` in `src/lib/stellar.ts`
+
+### Readiness rules
+
+| Condition | Status |
+|-----------|--------|
+| Not funded OR no trustline | `not_ready` |
+| Funded + trustline, XLM < `NEXT_PUBLIC_MIN_XLM_BALANCE` | `low_reserve` |
+| Funded + trustline + sufficient XLM | `ready` |
+
+Default asset: **USDC** on Stellar mainnet (configurable via env).
+
+---
+
+## Registration flow
+
+```mermaid
+sequenceDiagram
+  participant C as Contributor
+  participant R as /register
+  participant A as /api/check
+  participant S as /api/register
+  participant H as Horizon
+  participant D as PostgreSQL
+
+  C->>R: Enter G-address
+  R->>A: POST (debounced)
+  A->>H: loadAccount
+  H-->>A: balances
+  A-->>R: readiness badge
+  C->>S: POST save
+  S->>H: re-validate
+  S->>D: upsert Registration
+```
+
+Registration enforces:
+
+- Authenticated session
+- Valid Stellar address format
+- Unique `stellarAddress` across users (409 if taken)
+
+---
+
+## Maintainer dashboard flow
+
+1. `GET /api/contributors` — list all registrations with computed readiness
+2. **Re-check all** — `POST /api/contributors` batch-queries Horizon, updates DB
+3. **Export CSV** — client-side download via `exportContributorsCsv()`
+
+CSV columns: `github_username`, `stellar_address`, `readiness`, `funded`, `trustline`, `xlm_balance`, `last_checked_at`
+
+---
+
+## Frontend architecture
+
+| Concern | Approach |
+|---------|----------|
+| Server components | Landing page (stats), layout metadata |
+| Client components | Register, dashboard, interactive inputs |
+| Server state | React Query (`Providers.tsx`) |
+| Theming | `next-themes` + CSS variables (light/dark) |
+| UI primitives | shadcn/ui-style components in `src/components/ui/` |
+
+Key components:
+
+- `AddressInput` — debounced live `/api/check` validation
+- `TrustlineStatusBadge` — readiness indicator
+- `ContributorTable` — sort, filter, CSV export
+- `WaveReadinessBar` — aggregate progress bar
+
+---
+
+## Security considerations
+
+- **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` never exposed to client
+- **Horizon calls server-side** — `/api/check` prevents CORS/rate-limit issues and keeps validation logic centralized
+- **Maintainer API guard** — `/api/contributors` verifies `isMaintainer` on every request
+- **Address uniqueness** — prevents duplicate payout mappings
+
+---
+
+## Future: Soroban registry
+
+When `SOROBAN_CONTRACT_ID` is set, registrations can be mirrored to a Soroban smart contract for trustless, on-chain contributor registry. The PostgreSQL layer remains the query-optimized source for dashboard aggregations; contract writes would happen in `/api/register` post-save.
+
+---
+
+## Related docs
+
+- [Project structure](./PROJECT_STRUCTURE.md)
+- [Environment variables](./ENVIRONMENT.md)
+- [Deployment](./DEPLOYMENT.md)
+- [Contributing](./CONTRIBUTING.md)
