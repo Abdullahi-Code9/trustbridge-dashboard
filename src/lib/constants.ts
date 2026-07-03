@@ -16,8 +16,32 @@ export const MIN_XLM_BALANCE = Number(
   process.env.NEXT_PUBLIC_MIN_XLM_BALANCE ?? "1"
 );
 
-export const LOBSTR_TRUSTLINE_URL =
-  "https://lobstr.co/trustlines/create?asset_code=USDC&asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6";
+export function buildLobstrTrustlineUrl(asset = DEFAULT_ASSET): string {
+  const params = new URLSearchParams({
+    asset_code: asset.code,
+    asset_issuer: asset.issuer,
+  });
+  return `https://lobstr.co/trustlines/create?${params.toString()}`;
+}
 
-export const STELLAR_LAB_TRUSTLINE_URL =
-  "https://laboratory.stellar.org/#txbuilder?params=%7B%22operations%22%3A%5B%7B%22source%22%3A%22%22%2C%22type%22%3A%22changeTrust%22%2C%22asset%22%3A%7B%22code%22%3A%22USDC%22%2C%22issuer%22%3A%22GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6%22%7D%7D%5D%7D";
+export function buildStellarLabTrustlineUrl(asset = DEFAULT_ASSET): string {
+  const params = new URLSearchParams({
+    params: JSON.stringify({
+      operations: [
+        {
+          source: "",
+          type: "changeTrust",
+          asset: {
+            code: asset.code,
+            issuer: asset.issuer,
+          },
+        },
+      ],
+    }),
+  });
+  return `https://laboratory.stellar.org/#txbuilder?${params.toString()}`;
+}
+
+export const LOBSTR_TRUSTLINE_URL = buildLobstrTrustlineUrl();
+
+export const STELLAR_LAB_TRUSTLINE_URL = buildStellarLabTrustlineUrl();
