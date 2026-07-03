@@ -25,18 +25,7 @@ export function buildCheckResult(
 
   let readiness: ReadinessStatus = "not_ready";
 
-  if (funded && trustline) {
-    readiness = "ready";
-  } else if (funded && !trustline) {
-    // If account is funded but has less than 1 XLM, suggest low reserve.
-    if (!Number.isNaN(balance) && balance < 1) {
-      readiness = "low_reserve";
-    } else {
-      readiness = "not_ready";
-    }
-  } else {
-    readiness = "not_ready";
-  }
+  readiness = computeReadiness(funded, trustline, String(xlm_balance ?? "0"));
 
   return {
     funded,
@@ -50,15 +39,16 @@ export function buildCheckResult(
 export function computeReadiness(
   funded: boolean,
   trustline: boolean,
-  xlm_balance: string
+  xlm_balance: string,
+  minimumBalance = MIN_XLM_BALANCE
 ): ReadinessStatus {
   const balance = parseFloat(xlm_balance ?? "0");
 
-  if (funded && trustline) return "ready";
-  if (funded && !trustline) {
-    if (!Number.isNaN(balance) && balance < 1) return "low_reserve";
-    return "not_ready";
+  if (funded && trustline && !Number.isNaN(balance) && balance < minimumBalance) {
+    return "low_reserve";
   }
+  if (funded && trustline) return "ready";
+  if (funded && !trustline) return "not_ready";
 
   return "not_ready";
 }
