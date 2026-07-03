@@ -8,7 +8,10 @@ export function cn(...inputs: ClassValue[]) {
 export function formatRelativeTime(date: Date | string | null): string {
   if (!date) return "Never";
   const d = typeof date === "string" ? new Date(date) : date;
-  const diffMs = Date.now() - d.getTime();
+  const timestamp = d.getTime();
+  if (Number.isNaN(timestamp)) return "Never";
+
+  const diffMs = Math.max(0, Date.now() - timestamp);
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) return "Just now";
   if (minutes < 60) return `${minutes}m ago`;
