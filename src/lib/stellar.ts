@@ -1,10 +1,15 @@
 import { StrKey } from "stellar-sdk";
 
+import { MIN_XLM_BALANCE } from "@/lib/constants";
 import type { HorizonCheckResult, ReadinessStatus } from "@/types";
+
+export function normalizeStellarAddress(address: string): string {
+  return address.trim();
+}
 
 export function isValidStellarAddress(address: string): boolean {
   try {
-    return StrKey.isValidEd25519PublicKey(address);
+    return StrKey.isValidEd25519PublicKey(normalizeStellarAddress(address));
   } catch {
     return false;
   }
