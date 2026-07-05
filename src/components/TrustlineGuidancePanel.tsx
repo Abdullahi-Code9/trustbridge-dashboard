@@ -34,7 +34,7 @@ export function TrustlineGuidancePanel() {
             Add a USDC trustline using{" "}
             <a
               href={LOBSTR_TRUSTLINE_URL}
-              target="_blank" rel="noreferrer"
+              target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-stellar-cyan hover:underline"
             >
@@ -43,7 +43,7 @@ export function TrustlineGuidancePanel() {
             or the{" "}
             <a
               href={STELLAR_LAB_TRUSTLINE_URL}
-              target="_blank" rel="noreferrer"
+              target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-stellar-cyan hover:underline"
             >

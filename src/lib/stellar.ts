@@ -55,3 +55,9 @@ export function computeReadiness(
 
   return "not_ready";
 }
+
+export function getReadinessTone(status: ReadinessStatus): 'success' | 'warning' | 'danger' {
+  if (status === 'ready') return 'success';
+  if (status === 'low_reserve') return 'warning';
+  return 'danger';
+}
