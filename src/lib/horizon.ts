@@ -1,7 +1,7 @@
 import { Horizon } from "stellar-sdk";
 
 import { DEFAULT_ASSET, DEFAULT_HORIZON_URL } from "@/lib/constants";
-import { buildCheckResult, isValidStellarAddress } from "@/lib/stellar";
+import { buildCheckResult, isValidStellarAddress, normalizeStellarAddress } from "@/lib/stellar";
 import type { HorizonCheckResult } from "@/types";
 
 function getHorizonServer(): Horizon.Server {
@@ -15,7 +15,7 @@ export async function checkStellarAddress(
   assetCode: string = DEFAULT_ASSET.code,
   assetIssuer: string = DEFAULT_ASSET.issuer
 ): Promise<HorizonCheckResult> {
-  const trimmed = address.trim();
+  const trimmed = normalizeStellarAddress(address);
 
   if (!trimmed) {
     return buildCheckResult(false, false, "0", ["Address is required"]);
