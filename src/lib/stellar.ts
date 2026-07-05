@@ -47,7 +47,7 @@ export function computeReadiness(
 ): ReadinessStatus {
   const balance = parseXlmBalance(xlm_balance);
 
-  if (funded && trustline && !Number.isNaN(balance) && balance < minimumBalance) {
+  if (funded && trustline && balance < minimumBalance) {
     return "low_reserve";
   }
   if (funded && trustline) return "ready";
