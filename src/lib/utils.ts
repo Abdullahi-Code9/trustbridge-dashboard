@@ -35,3 +35,7 @@ export function shortenAddress(address: string, prefix = 6, suffix = 4): string 
   if (address.length <= prefix + suffix) return address;
   return `${address.slice(0, prefix)}…${address.slice(-suffix)}`;
 }
+
+export function isExternalUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
