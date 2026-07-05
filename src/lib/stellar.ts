@@ -21,8 +21,6 @@ export function buildCheckResult(
   xlm_balance: string,
   errors: string[] = []
 ): HorizonCheckResult {
-  const balance = parseFloat(xlm_balance ?? "0");
-
   let readiness: ReadinessStatus = "not_ready";
 
   readiness = computeReadiness(funded, trustline, String(xlm_balance ?? "0"));
