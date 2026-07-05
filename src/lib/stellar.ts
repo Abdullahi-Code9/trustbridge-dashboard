@@ -15,6 +15,11 @@ export function isValidStellarAddress(address: string): boolean {
   }
 }
 
+export function parseXlmBalance(xlmBalance: string): number {
+  const parsed = Number.parseFloat(xlmBalance ?? "0");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function buildCheckResult(
   funded: boolean,
   trustline: boolean,
@@ -40,7 +45,7 @@ export function computeReadiness(
   xlm_balance: string,
   minimumBalance = MIN_XLM_BALANCE
 ): ReadinessStatus {
-  const balance = parseFloat(xlm_balance ?? "0");
+  const balance = parseXlmBalance(xlm_balance);
 
   if (funded && trustline && !Number.isNaN(balance) && balance < minimumBalance) {
     return "low_reserve";
