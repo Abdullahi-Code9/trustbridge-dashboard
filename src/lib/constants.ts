@@ -6,10 +6,9 @@ export const STELLAR_COLORS = {
 export const DEFAULT_HORIZON_URL = "https://horizon.stellar.org";
 
 export const DEFAULT_ASSET = {
-  code: process.env.NEXT_PUBLIC_DEFAULT_ASSET_CODE ?? "USDC",
-  issuer:
-    process.env.NEXT_PUBLIC_DEFAULT_ASSET_ISSUER ??
-    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+  code: (process.env.NEXT_PUBLIC_DEFAULT_ASSET_CODE ?? "USDC").trim().toUpperCase(),
+  issuer: (process.env.NEXT_PUBLIC_DEFAULT_ASSET_ISSUER ??
+    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6").trim(),
 };
 
 export const MIN_XLM_BALANCE = Number(
