@@ -11,8 +11,13 @@ export const DEFAULT_ASSET = {
     "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6").trim(),
 };
 
-export const MIN_XLM_BALANCE = Number(
-  process.env.NEXT_PUBLIC_MIN_XLM_BALANCE ?? "1"
+function parseMinXlmBalance(value: string | undefined): number {
+  const parsed = Number(value ?? "1");
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
+}
+
+export const MIN_XLM_BALANCE = parseMinXlmBalance(
+  process.env.NEXT_PUBLIC_MIN_XLM_BALANCE
 );
 
 export function buildLobstrTrustlineUrl(asset = DEFAULT_ASSET): string {
