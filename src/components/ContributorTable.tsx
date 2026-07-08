@@ -5,6 +5,7 @@ import { ArrowUpDown, Download } from "lucide-react";
 
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { Button } from "@/components/ui/button";
+import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { ContributorRow, ReadinessStatus } from "@/types";
 
@@ -197,17 +198,6 @@ export function exportContributorsCsv(contributors: ContributorRow[]): void {
     row.lastCheckedAt ?? "",
   ]);
 
-  const csv = [headers, ...rows]
-    .map((line) =>
-      line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
-    )
-    .join("\n");
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `trustbridge-wave-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  const csv = buildCsv(headers, rows);
+  downloadCsv(buildCsvFilename("trustbridge-wave"), csv);
 }
