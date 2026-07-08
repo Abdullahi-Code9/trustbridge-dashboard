@@ -1,7 +1,14 @@
 import { Horizon } from "stellar-sdk";
 
 import { DEFAULT_ASSET, DEFAULT_HORIZON_URL } from "@/lib/constants";
-import { buildCheckResult, isValidStellarAddress, normalizeStellarAddress } from "@/lib/stellar";
+import {
+  buildCheckResult,
+  buildNotFoundCheckResult,
+  getHorizonErrorMessage,
+  isAccountNotFoundError,
+  isValidStellarAddress,
+  normalizeStellarAddress,
+} from "@/lib/stellar";
 import type { HorizonCheckResult } from "@/types";
 
 function getHorizonServer(): Horizon.Server {
@@ -49,16 +56,10 @@ export async function checkStellarAddress(
 
     return buildCheckResult(true, trustline, xlmBalance, errors);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown Horizon error";
+    const message = getHorizonErrorMessage(error);
 
-    if (
-      message.includes("404") ||
-      message.toLowerCase().includes("not found")
-    ) {
-      return buildCheckResult(false, false, "0", [
-        "Account not found on the Stellar network (not funded)",
-      ]);
+    if (isAccountNotFoundError(message)) {
+      return buildNotFoundCheckResult();
     }
 
     errors.push(`Horizon error: ${message}`);
