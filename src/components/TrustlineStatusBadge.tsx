@@ -1,30 +1,28 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { getReadinessConfig } from "@/lib/readiness";
 import type { ReadinessStatus } from "@/types";
-
-const STATUS_CONFIG: Record<
-  ReadinessStatus,
-  { label: string; variant: "ready" | "warning" | "danger"; icon: string }
-> = {
-  ready: { label: "Ready", variant: "ready", icon: "✅" },
-  low_reserve: { label: "Low Reserve", variant: "warning", icon: "⚠️" },
-  not_ready: { label: "Not Ready", variant: "danger", icon: "❌" },
-};
 
 interface TrustlineStatusBadgeProps {
   status: ReadinessStatus;
   className?: string;
+  showDescription?: boolean;
 }
 
 export function TrustlineStatusBadge({
   status,
   className,
+  showDescription = false,
 }: TrustlineStatusBadgeProps) {
-  const config = STATUS_CONFIG[status];
+  const config = getReadinessConfig(status);
 
   return (
-    <Badge variant={config.variant} className={className}>
+    <Badge
+      variant={config.variant}
+      className={className}
+      title={showDescription ? config.description : undefined}
+    >
       <span className="mr-1">{config.icon}</span>
       {config.label}
     </Badge>
