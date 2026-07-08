@@ -5,12 +5,18 @@ import { ArrowUpDown, Download } from "lucide-react";
 
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { Button } from "@/components/ui/button";
+import {
+  filterContributors,
+  sortContributors,
+  type ContributorFilter,
+  type ContributorSortKey,
+} from "@/lib/contributors";
 import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { ContributorRow, ReadinessStatus } from "@/types";
 
-type FilterOption = "all" | "ready" | "needs_attention";
-type SortKey = "githubUsername" | "xlmBalance" | "lastCheckedAt";
+type FilterOption = ContributorFilter;
+type SortKey = ContributorSortKey;
 
 interface ContributorTableProps {
   contributors: ContributorRow[];
@@ -39,29 +45,8 @@ export function ContributorTable({
   const [sortAsc, setSortAsc] = useState(true);
 
   const filtered = useMemo(() => {
-    let rows = [...contributors];
-
-    if (filter === "ready") {
-      rows = rows.filter((row) => row.readiness === "ready");
-    } else if (filter === "needs_attention") {
-      rows = rows.filter((row) => row.readiness !== "ready");
-    }
-
-    rows.sort((a, b) => {
-      let comparison = 0;
-      if (sortKey === "githubUsername") {
-        comparison = a.githubUsername.localeCompare(b.githubUsername);
-      } else if (sortKey === "xlmBalance") {
-        comparison = parseFloat(a.xlmBalance) - parseFloat(b.xlmBalance);
-      } else {
-        const aTime = a.lastCheckedAt ? new Date(a.lastCheckedAt).getTime() : 0;
-        const bTime = b.lastCheckedAt ? new Date(b.lastCheckedAt).getTime() : 0;
-        comparison = aTime - bTime;
-      }
-      return sortAsc ? comparison : -comparison;
-    });
-
-    return rows;
+    const rows = filterContributors(contributors, filter);
+    return sortContributors(rows, sortKey, sortAsc);
   }, [contributors, filter, sortAsc, sortKey]);
 
   function toggleSort(key: SortKey) {
