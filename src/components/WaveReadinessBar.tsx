@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { calculatePercent, cn } from "@/lib/utils";
 
 interface WaveReadinessBarProps {
   readyCount: number;
@@ -13,8 +13,7 @@ export function WaveReadinessBar({
   totalCount,
   className,
 }: WaveReadinessBarProps) {
-  const percent =
-    totalCount === 0 ? 0 : Math.round((readyCount / totalCount) * 100);
+  const percent = calculatePercent(readyCount, totalCount);
 
   return (
     <div className={cn("space-y-2", className)}>
