@@ -1,5 +1,6 @@
-import { computeReadiness } from "@/lib/stellar";
 import { prisma } from "@/lib/prisma";
+import { computeReadiness } from "@/lib/stellar";
+import { buildDashboardStats } from "@/lib/stats";
 import type { ContributorRow, DashboardStats } from "@/types";
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -18,14 +19,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       "ready"
   ).length;
 
-  return {
-    totalContributors,
-    readyCount,
-    readyPercent:
-      totalContributors === 0
-        ? 0
-        : Math.round((readyCount / totalContributors) * 100),
-  };
+  return buildDashboardStats(totalContributors, readyCount);
 }
 
 export async function getContributors(): Promise<ContributorRow[]> {

@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { countReadyContributors } from "@/lib/contributors";
 import type { ContributorRow } from "@/types";
 
 interface ContributorsResponse {
@@ -50,9 +51,7 @@ export default function DashboardPage() {
   });
 
   const contributors = contributorsQuery.data?.contributors ?? [];
-  const readyCount = contributors.filter(
-    (row) => row.readiness === "ready"
-  ).length;
+  const readyCount = countReadyContributors(contributors);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
