@@ -12,8 +12,9 @@ import {
   type ContributorSortKey,
 } from "@/lib/contributors";
 import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
+import { getRowAccent } from "@/lib/readiness";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import type { ContributorRow, ReadinessStatus } from "@/types";
+import type { ContributorRow } from "@/types";
 
 type FilterOption = ContributorFilter;
 type SortKey = ContributorSortKey;
@@ -22,17 +23,6 @@ interface ContributorTableProps {
   contributors: ContributorRow[];
   onExport?: () => void;
   className?: string;
-}
-
-function rowAccent(readiness: ReadinessStatus): string {
-  switch (readiness) {
-    case "ready":
-      return "border-l-4 border-l-emerald-500";
-    case "low_reserve":
-      return "border-l-4 border-l-amber-500";
-    case "not_ready":
-      return "border-l-4 border-l-red-500";
-  }
 }
 
 export function ContributorTable({
@@ -139,7 +129,7 @@ export function ContributorTable({
               filtered.map((row) => (
                 <tr
                   key={row.id}
-                  className={cn("border-t bg-card/50", rowAccent(row.readiness))}
+                  className={cn("border-t bg-card/50", getRowAccent(row.readiness))}
                 >
                   <td className="px-4 py-3 font-medium">@{row.githubUsername}</td>
                   <td className="px-4 py-3 font-mono text-xs">
