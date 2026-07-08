@@ -39,3 +39,23 @@ export function shortenAddress(address: string, prefix = 6, suffix = 4): string 
 export function isExternalUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
+
+export function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function calculatePercent(part: number, total: number): number {
+  return total <= 0 ? 0 : clampPercent((part / total) * 100);
+}
+
+export function formatGithubHandle(username: string): string {
+  const normalized = username.trim().replace(/^@+/, "");
+  return normalized ? `@${normalized}` : "@unknown";
+}
+
+export function formatXlmBalance(balance: string, digits = 2): string {
+  const value = Number.parseFloat(balance);
+  if (!Number.isFinite(value)) return "0";
+  return value.toFixed(digits);
+}
