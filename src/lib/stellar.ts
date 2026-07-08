@@ -61,3 +61,18 @@ export function getReadinessTone(status: ReadinessStatus): 'success' | 'warning'
   if (status === 'low_reserve') return 'warning';
   return 'danger';
 }
+
+export function getHorizonErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown Horizon error";
+}
+
+export function isAccountNotFoundError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return message.includes("404") || normalized.includes("not found");
+}
+
+export function buildNotFoundCheckResult() {
+  return buildCheckResult(false, false, "0", [
+    "Account not found on the Stellar network (not funded)",
+  ]);
+}
