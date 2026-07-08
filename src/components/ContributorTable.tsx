@@ -13,7 +13,7 @@ import {
 } from "@/lib/contributors";
 import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
 import { getRowAccent } from "@/lib/readiness";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn, formatGithubHandle, formatRelativeTime, formatXlmBalance, shortenAddress } from "@/lib/utils";
 import type { ContributorRow } from "@/types";
 
 type FilterOption = ContributorFilter;
@@ -131,14 +131,14 @@ export function ContributorTable({
                   key={row.id}
                   className={cn("border-t bg-card/50", getRowAccent(row.readiness))}
                 >
-                  <td className="px-4 py-3 font-medium">@{row.githubUsername}</td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {row.stellarAddress}
+                  <td className="px-4 py-3 font-medium">{formatGithubHandle(row.githubUsername)}</td>
+                  <td className="px-4 py-3 font-mono text-xs" title={row.stellarAddress}>
+                    {shortenAddress(row.stellarAddress)}
                   </td>
                   <td className="px-4 py-3">
                     <TrustlineStatusBadge status={row.readiness} />
                   </td>
-                  <td className="px-4 py-3">{row.xlmBalance}</td>
+                  <td className="px-4 py-3">{formatXlmBalance(row.xlmBalance)}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatRelativeTime(row.lastCheckedAt)}
                   </td>
