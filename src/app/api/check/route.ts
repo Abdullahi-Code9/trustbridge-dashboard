@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
+import { jsonCheckError, jsonCheckResult } from "@/lib/check-api";
 import { DEFAULT_ASSET } from "@/lib/constants";
 import { checkStellarAddress } from "@/lib/horizon";
 import type { CheckAddressPayload } from "@/types";
@@ -12,16 +13,7 @@ export async function POST(request: NextRequest) {
     const address = body.address?.trim();
 
     if (!address) {
-      return NextResponse.json(
-        {
-          funded: false,
-          trustline: false,
-          xlm_balance: "0",
-          errors: ["Address is required"],
-          readiness: "not_ready",
-        },
-        { status: 400 }
-      );
+      return jsonCheckError(["Address is required"], 400);
     }
 
     const result = await checkStellarAddress(
@@ -30,17 +22,8 @@ export async function POST(request: NextRequest) {
       body.asset_issuer ?? DEFAULT_ASSET.issuer
     );
 
-    return NextResponse.json(result);
+    return jsonCheckResult(result);
   } catch {
-    return NextResponse.json(
-      {
-        funded: false,
-        trustline: false,
-        xlm_balance: "0",
-        errors: ["Failed to check address"],
-        readiness: "not_ready",
-      },
-      { status: 500 }
-    );
+    return jsonCheckError(["Failed to check address"], 500);
   }
 }
