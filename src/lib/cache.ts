@@ -9,8 +9,6 @@ interface CacheEntry<T> {
   hits: number;
 }
 
-type CacheKeyBuilder<T> = (...args: unknown[]) => string;
-
 /**
  * Generic in-memory cache with TTL and statistics.
  */
@@ -85,7 +83,8 @@ export class CacheStore<T> {
    */
   invalidatePattern(pattern: RegExp): number {
     let count = 0;
-    for (const key of this.store.keys()) {
+    const keys = Array.from(this.store.keys());
+    for (const key of keys) {
       if (pattern.test(key)) {
         this.store.delete(key);
         count++;
