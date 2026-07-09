@@ -1,0 +1,181 @@
+/**
+ * Error handling utilities for React components.
+ * Provides error boundary support and error recovery strategies.
+ */
+
+export interface ErrorInfo {
+  componentStack: string;
+  errorMessage: string;
+  errorStack?: string;
+  timestamp: Date;
+}
+
+export interface ErrorBoundaryConfig {
+  /**
+   * Enable error logging to external service
+   */
+  enableLogging?: boolean;
+  /**
+   * Callback when error is caught
+   */
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  /**
+   * Whether to show fallback UI
+   */
+  showFallback?: boolean;
+  /**
+   * Custom error fallback component
+   */
+  fallbackComponent?: React.ComponentType<{ error: Error; reset: () => void }>;
+}
+
+/**
+ * Error logger for tracking component errors.
+ */
+export class ErrorLogger {
+  private errors: ErrorInfo[] = [];
+  private readonly maxErrors: number;
+
+  constructor(maxErrors: number = 100) {
+    this.maxErrors = maxErrors;
+  }
+
+  /**
+   * Log an error with component context.
+   */
+  log(error: Error, componentStack: string): ErrorInfo {
+    const errorInfo: ErrorInfo = {
+      errorMessage: error.message,
+      componentStack,
+      errorStack: error.stack,
+      timestamp: new Date(),
+    };
+
+    this.errors.push(errorInfo);
+
+    // Keep only recent errors
+    if (this.errors.length > this.maxErrors) {
+      this.errors = this.errors.slice(-this.maxErrors);
+    }
+
+    return errorInfo;
+  }
+
+  /**
+   * Get all logged errors.
+   */
+  getErrors(): ErrorInfo[] {
+    return [...this.errors];
+  }
+
+  /**
+   * Get errors for a specific time range.
+   */
+  getErrorsSince(minutesAgo: number): ErrorInfo[] {
+    const cutoff = Date.now() - minutesAgo * 60 * 1000;
+    return this.errors.filter((e) => e.timestamp.getTime() > cutoff);
+  }
+
+  /**
+   * Get error statistics.
+   */
+  getStats(): {
+    total: number;
+    recentErrors: number;
+    lastError?: ErrorInfo;
+  } {
+    return {
+      total: this.errors.length,
+      recentErrors: this.getErrorsSince(5).length,
+      lastError: this.errors[this.errors.length - 1],
+    };
+  }
+
+  /**
+   * Clear all logged errors.
+   */
+  clear(): void {
+    this.errors = [];
+  }
+
+  /**
+   * Export errors as JSON for debugging.
+   */
+  toJSON(): string {
+    return JSON.stringify(this.errors, null, 2);
+  }
+}
+
+/**
+ * Global error logger instance.
+ */
+export const globalErrorLogger = new ErrorLogger();
+
+/**
+ * User-friendly error messages.
+ */
+export const errorMessages: Record<string, string> = {
+  NETWORK_ERROR: 'Network error. Please check your connection and try again.',
+  TIMEOUT_ERROR: 'Request timed out. Please try again.',
+  SERVER_ERROR: 'Server error. Please try again later.',
+  UNAUTHORIZED: 'You do not have permission to perform this action.',
+  NOT_FOUND: 'The requested resource was not found.',
+  VALIDATION_ERROR: 'Please check your input and try again.',
+  UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
+};
+
+/**
+ * Map error codes to user-friendly messages.
+ */
+export function getUserFriendlyMessage(errorCode: string): string {
+  return errorMessages[errorCode] || errorMessages.UNKNOWN_ERROR;
+}
+
+/**
+ * Classify errors by type for handling.
+ */
+export function classifyError(error: unknown): {
+  type: 'network' | 'validation' | 'auth' | 'server' | 'unknown';
+  message: string;
+  recoverable: boolean;
+} {
+  if (error instanceof TypeError && error.message.includes('fetch')) {
+    return {
+      type: 'network',
+      message: getUserFriendlyMessage('NETWORK_ERROR'),
+      recoverable: true,
+    };
+  }
+
+  if (error instanceof Error) {
+    if (error.message.includes('timeout')) {
+      return {
+        type: 'network',
+        message: getUserFriendlyMessage('TIMEOUT_ERROR'),
+        recoverable: true,
+      };
+    }
+
+    if (error.message.includes('401') || error.message.includes('403')) {
+      return {
+        type: 'auth',
+        message: getUserFriendlyMessage('UNAUTHORIZED'),
+        recoverable: false,
+      };
+    }
+
+    if (error.message.includes('5')) {
+      return {
+        type: 'server',
+        message: getUserFriendlyMessage('SERVER_ERROR'),
+        recoverable: true,
+      };
+    }
+  }
+
+  return {
+    type: 'unknown',
+    message: getUserFriendlyMessage('UNKNOWN_ERROR'),
+    recoverable: true,
+  };
+}
