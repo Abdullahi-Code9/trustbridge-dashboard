@@ -1,3 +1,5 @@
+import "server-only";
+
 import { Horizon } from "stellar-sdk";
 
 import { DEFAULT_ASSET, DEFAULT_HORIZON_URL } from "@/lib/constants";
@@ -6,6 +8,8 @@ import {
   buildNotFoundCheckResult,
   getHorizonErrorMessage,
   isAccountNotFoundError,
+} from "@/lib/readiness";
+import {
   isValidStellarAddress,
   normalizeStellarAddress,
 } from "@/lib/stellar";

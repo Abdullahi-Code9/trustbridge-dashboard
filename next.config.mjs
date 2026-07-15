@@ -1,7 +1,22 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => {
+  // Next 14: keep stellar-sdk out of the RSC bundler (native deps)
+  experimental: {
+    serverComponentsExternalPackages: ["stellar-sdk", "sodium-native"],
+  },
+  webpack: (config, { isServer }) => {
     config.externals.push("pino-pretty", "lokijs", "encoding");
+
+    // Block accidental client bundling of stellar-sdk / native crypto
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "stellar-sdk": false,
+        "@stellar/stellar-base": false,
+        "sodium-native": false,
+      };
+    }
+
     return config;
   },
 };

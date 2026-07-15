@@ -1,5 +1,7 @@
+import "server-only";
+
 import { prisma } from "@/lib/prisma";
-import { computeReadiness } from "@/lib/stellar";
+import { computeReadiness } from "@/lib/readiness";
 import { buildDashboardStats } from "@/lib/stats";
 import type { ContributorRow, DashboardStats } from "@/types";
 
