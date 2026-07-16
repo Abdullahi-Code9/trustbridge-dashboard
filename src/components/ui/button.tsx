@@ -19,8 +19,8 @@ const buttonVariants = cva(
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         stellar:
-          "bg-stellar-purple text-white hover:bg-stellar-purple/90 shadow-lg shadow-stellar-purple/25",
-        cyan: "bg-stellar-cyan text-white hover:bg-stellar-cyan/90",
+          "bg-stellar-purple text-white shadow-sm shadow-stellar-purple/20 transition-all hover:bg-stellar-purple/90 hover:shadow-md hover:shadow-stellar-purple/20",
+        cyan: "bg-stellar-cyan text-white shadow-sm hover:bg-stellar-cyan/90",
       },
       size: {
         default: "h-10 px-4 py-2",
