@@ -29,16 +29,22 @@
 | Audience | Capability |
 |----------|------------|
 | **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
 
 ### Readiness model
 
 | Status | Badge | Meaning |
 |--------|-------|---------|
-| **Ready** | ✅ | Funded, USDC trustline active, XLM ≥ minimum reserve |
-| **Low reserve** | ⚠️ | Funded + trustline, but XLM below threshold |
-| **Not ready** | ❌ | Unfunded account or missing trustline |
+| **Ready** | ✅ | Funded, USDC trustline active **and authorized**, XLM ≥ minimum reserve |
+| **Low reserve** | ⚠️ | Funded + authorized trustline, but XLM below threshold |
+| **Not ready** | ❌ | Unfunded, missing trustline, **or a present-but-unauthorized trustline** |
+
+> **Authorization matters:** a trustline can exist but remain *unauthorized* by the
+> asset issuer (Stellar `AUTH_REQUIRED` assets). Payments to an unauthorized
+> trustline still fail, so the dashboard tracks `is_authorized` separately and an
+> account is only **verified** (✅ on-chain badge) when funded **and** holding an
+> authorized trustline.
 
 ---
 
@@ -132,10 +138,14 @@ All docs are cross-linked from this README:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/[...nextauth]` | GET/POST | NextAuth.js handlers |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` |
+| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
+| `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
+| `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
+| `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
+| `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 
 ### Middleware
 
@@ -156,13 +166,15 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=
+TOKEN_ENCRYPTION_KEY=  # required, openssl rand -base64 32 — encrypts stored access tokens
 GITHUB_MAINTAINER_ORG=
 DATABASE_URL=
 NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
 NEXT_PUBLIC_DEFAULT_ASSET_CODE=USDC
 NEXT_PUBLIC_DEFAULT_ASSET_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6
 NEXT_PUBLIC_MIN_XLM_BALANCE=1
-SOROBAN_CONTRACT_ID=   # optional, future on-chain registry
+SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
+SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
 ```
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.
@@ -172,6 +184,25 @@ Generate `NEXTAUTH_SECRET`:
 ```bash
 openssl rand -base64 32
 ```
+
+---
+
+## Testing
+
+Unit tests run on [Vitest](https://vitest.dev/) and cover the pure business logic
+(readiness/authorization rules, the Horizon retry helper, audit-log formatting,
+and batch verification):
+
+```bash
+npm test          # run once
+npm run test:watch
+```
+
+Tests also run in CI on every push and pull request, before the build.
+
+> **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`
+> and issue #22 adds an `AuditLog` table. After pulling these changes, sync your
+> database with `npm run db:push`.
 
 ---
 

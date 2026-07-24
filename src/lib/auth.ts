@@ -4,6 +4,8 @@ import type { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 
 import { prisma } from "@/lib/prisma";
+import { decryptToken, encryptToken } from "@/lib/token-crypto";
+import { recordTokenAudit } from "@/lib/token-audit";
 
 async function isOrgMember(accessToken: string, org: string): Promise<boolean> {
   try {
@@ -55,6 +57,18 @@ export const authOptions: NextAuthOptions = {
         const githubUsername = githubProfile.login;
 
         if (githubId && githubUsername) {
+          // Access tokens are encrypted before they ever touch the database.
+          // If TOKEN_ENCRYPTION_KEY is misconfigured we fail closed (store
+          // nothing) rather than persist plaintext — see src/lib/token-crypto.ts.
+          let encryptedAccessToken: string | null = null;
+          if (account.access_token) {
+            try {
+              encryptedAccessToken = encryptToken(account.access_token);
+            } catch (error) {
+              console.error("Failed to encrypt GitHub access token", error);
+            }
+          }
+
           const user = await prisma.user.upsert({
             where: { githubId },
             create: {
@@ -63,21 +77,31 @@ export const authOptions: NextAuthOptions = {
               name: githubProfile.name ?? null,
               email: githubProfile.email ?? null,
               image: githubProfile.image ?? null,
-              accessToken: account.access_token ?? null,
+              accessToken: encryptedAccessToken,
             },
             update: {
               githubUsername,
               name: githubProfile.name ?? null,
               email: githubProfile.email ?? null,
               image: githubProfile.image ?? null,
-              accessToken: account.access_token ?? null,
+              accessToken: encryptedAccessToken,
             },
           });
 
+          await recordTokenAudit(
+            user.id,
+            encryptedAccessToken
+              ? "token_encrypted_at_signin"
+              : "token_encryption_skipped",
+            Boolean(encryptedAccessToken)
+          );
+
           token.sub = user.id;
           token.githubUsername = githubUsername;
-          token.accessToken = account.access_token ?? undefined;
 
+          // Intentionally not persisted on the JWT/session: the raw GitHub
+          // access token must never reach the client. Server code that needs
+          // it later should call getDecryptedGithubAccessToken(userId).
           const maintainerOrg = process.env.GITHUB_MAINTAINER_ORG?.trim();
           if (maintainerOrg && account.access_token) {
             token.isMaintainer = await isOrgMember(
@@ -96,7 +120,6 @@ export const authOptions: NextAuthOptions = {
         session.user.githubUsername = token.githubUsername;
         session.user.isMaintainer = token.isMaintainer ?? false;
       }
-      session.accessToken = token.accessToken;
       return session;
     },
   },
@@ -110,4 +133,34 @@ export async function getSessionUserId(session: {
   user?: { id?: string };
 }): Promise<string | null> {
   return session.user?.id ?? null;
+}
+
+/**
+ * Decrypts a user's stored GitHub access token for server-side use only
+ * (e.g. a future maintainer action that calls the GitHub API on the user's
+ * behalf). Never call this from a route that returns data to the client.
+ */
+export async function getDecryptedGithubAccessToken(
+  userId: string
+): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { accessToken: true },
+  });
+
+  if (!user?.accessToken) return null;
+
+  try {
+    const plaintext = decryptToken(user.accessToken);
+    await recordTokenAudit(userId, "token_decrypted", true);
+    return plaintext;
+  } catch (error) {
+    await recordTokenAudit(
+      userId,
+      "token_decrypt_failed",
+      false,
+      error instanceof Error ? error.message : "Unknown decrypt error"
+    );
+    return null;
+  }
 }

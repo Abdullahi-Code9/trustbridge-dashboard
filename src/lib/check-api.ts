@@ -9,6 +9,8 @@ export function emptyCheckResult(
   return {
     funded: false,
     trustline: false,
+    trustline_authorized: false,
+    verified: false,
     xlm_balance: "0",
     errors,
     readiness,
