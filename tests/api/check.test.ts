@@ -9,6 +9,12 @@ vi.mock("@/lib/horizon", () => ({
 import { checkStellarAddress } from "@/lib/horizon";
 import { resetRateLimit } from "@/lib/rate-limit";
 
+function post(body: unknown) {
+  return new NextRequest("http://localhost:3000/api/check", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
 const sameOriginHeaders: Record<string, string> = {
   origin: "http://localhost:3000",
   host: "localhost:3000",
@@ -70,6 +76,13 @@ describe("POST /api/check", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 200 with not-ready state when circuit breaker is open", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: false,
+      trustline: false,
+      xlm_balance: "0",
+      readiness: "not_ready",
+      errors: ["Horizon is temporarily unavailable. Please try again later."],
   it("returns 200 with mocked result (same-origin)", async () => {
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: true,
@@ -83,6 +96,17 @@ describe("POST /api/check", () => {
     const res = await POST(r);
     expect(res.status).toBe(200);
     const json = await res.json();
+    expect(json.errors).toContain(
+      "Horizon is temporarily unavailable. Please try again later."
+    );
+  });
+
+  it("returns 500 for unexpected errors", async () => {
+    vi.mocked(checkStellarAddress).mockRejectedValue(new Error("boom"));
+
+    const r = post({ address: "GBSX" });
+    const res = await POST(r);
+    expect(res.status).toBe(500);
     expect(json.funded).toBe(true);
   });
 });
