@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordAuditLog } from "@/lib/audit";
 import { authOptions } from "@/lib/auth";
 import { DEFAULT_ASSET } from "@/lib/constants";
+import { assertSameOrigin } from "@/lib/csrf";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
 import { isValidStellarAddress } from "@/lib/stellar";

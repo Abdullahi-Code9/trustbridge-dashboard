@@ -24,6 +24,10 @@ interface ContributorsResponse {
   contributors: ContributorRow[];
 }
 
+interface ContributorResponse {
+  contributor: ContributorRow;
+}
+
 export default function DashboardPage() {
   const queryClient = useQueryClient();
 
@@ -48,6 +52,27 @@ export default function DashboardPage() {
       queryClient.setQueryData(["contributors"], {
         contributors: data.contributors,
       });
+    },
+  });
+
+  const recheckOneMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/contributors/${id}`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Re-check failed");
+      return (await response.json()) as ContributorResponse;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<ContributorsResponse>(
+        ["contributors"],
+        (current) =>
+          current && {
+            contributors: current.contributors.map((row) =>
+              row.id === data.contributor.id ? data.contributor : row
+            ),
+          }
+      );
     },
   });
 
