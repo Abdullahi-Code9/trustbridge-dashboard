@@ -26,9 +26,11 @@ export function toContributorRow(row: RegistrationWithUser): ContributorRow {
     ),
     funded: row.funded,
     xlmBalance: row.xlmBalance,
+    spendableXlmBalance: row.spendableXlmBalance,
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
     readiness: computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
       authorized: row.trustlineAuthorized,
+      spendableBalance: row.spendableXlmBalance,
     }),
   };
 }
@@ -40,6 +42,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       trustlineReady: true,
       trustlineAuthorized: true,
       xlmBalance: true,
+      spendableXlmBalance: true,
     },
   });
 
@@ -48,6 +51,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     (row) =>
       computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
         authorized: row.trustlineAuthorized,
+        spendableBalance: row.spendableXlmBalance,
       }) === "ready"
   ).length;
 
@@ -84,6 +88,7 @@ async function recheckRegistration(
       trustlineReady: result.trustline,
       trustlineAuthorized: result.trustline_authorized,
       xlmBalance: result.xlm_balance,
+      spendableXlmBalance: result.spendable_xlm_balance,
       lastCheckedAt: new Date(),
     },
   });

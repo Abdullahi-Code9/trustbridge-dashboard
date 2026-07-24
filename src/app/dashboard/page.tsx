@@ -51,6 +51,29 @@ export default function DashboardPage() {
     },
   });
 
+  const recheckOneMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/contributors/${id}`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Re-check failed");
+      return (await response.json()) as { contributor: ContributorRow };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(
+        ["contributors"],
+        (current: ContributorsResponse | undefined) => {
+          if (!current) return current;
+          return {
+            contributors: current.contributors.map((row) =>
+              row.id === data.contributor.id ? data.contributor : row
+            ),
+          };
+        }
+      );
+    },
+  });
+
   const sorobanQuery = useQuery({
     queryKey: ["soroban-events"],
     queryFn: async () => {

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordAuditLog } from "@/lib/audit";
 import { authOptions } from "@/lib/auth";
 import { DEFAULT_ASSET } from "@/lib/constants";
+import { assertSameOrigin } from "@/lib/csrf";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
 import { isValidStellarAddress } from "@/lib/stellar";
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
         trustlineReady: horizonResult.trustline,
         trustlineAuthorized: horizonResult.trustline_authorized,
         xlmBalance: horizonResult.xlm_balance,
+        spendableXlmBalance: horizonResult.spendable_xlm_balance,
         lastCheckedAt: new Date(),
       },
       update: {
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest) {
         trustlineReady: horizonResult.trustline,
         trustlineAuthorized: horizonResult.trustline_authorized,
         xlmBalance: horizonResult.xlm_balance,
+        spendableXlmBalance: horizonResult.spendable_xlm_balance,
         lastCheckedAt: new Date(),
       },
     });
@@ -97,6 +100,7 @@ export async function POST(request: NextRequest) {
         trustline_authorized: registration.trustlineAuthorized,
         verified: horizonResult.verified,
         xlm_balance: registration.xlmBalance,
+        spendable_xlm_balance: registration.spendableXlmBalance,
       },
     });
   } catch {

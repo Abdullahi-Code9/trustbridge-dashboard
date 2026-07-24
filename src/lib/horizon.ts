@@ -7,6 +7,7 @@ import { DEFAULT_ASSET, DEFAULT_HORIZON_URL } from "@/lib/constants";
 import {
   buildCheckResult,
   buildNotFoundCheckResult,
+  computeSpendableXlmBalance,
   getHorizonErrorMessage,
   isAccountNotFoundError,
 } from "@/lib/readiness";
@@ -18,6 +19,17 @@ import {
 import type { HorizonCheckResult } from "@/types";
 
 type AccountBalance = Horizon.HorizonApi.BalanceLine;
+
+/**
+ * `num_sponsoring`/`num_sponsored` are present on every Horizon account
+ * response and copied onto `AccountResponse` at runtime, but the SDK's
+ * `AccountResponse` class type only declares `subentry_count`. Narrow cast
+ * to read them without pulling in the full `ServerApi.AccountRecord` shape.
+ */
+type AccountSponsorshipFields = {
+  num_sponsoring: number;
+  num_sponsored: number;
+};
 
 function getHorizonServer(): Horizon.Server {
   const url =
@@ -99,8 +111,24 @@ export async function checkStellarAddress(
         !isAccountNotFoundError(getHorizonErrorMessage(error)),
     });
 
-    const xlmBalance =
-      account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+    const nativeBalance = account.balances.find(
+      (b) => b.asset_type === "native"
+    );
+    const xlmBalance = nativeBalance?.balance ?? "0";
+    const sellingLiabilities =
+      (nativeBalance && "selling_liabilities" in nativeBalance
+        ? nativeBalance.selling_liabilities
+        : undefined) ?? "0";
+
+    const { num_sponsoring, num_sponsored } =
+      account as unknown as AccountSponsorshipFields;
+
+    const spendableXlmBalance = computeSpendableXlmBalance(xlmBalance, {
+      subentryCount: account.subentry_count,
+      numSponsoring: num_sponsoring,
+      numSponsored: num_sponsored,
+      sellingLiabilities,
+    });
 
     const trustlineBalance = account.balances.find((balance) =>
       isMatchingTrustline(balance, assetCode, assetIssuer)
@@ -113,7 +141,8 @@ export async function checkStellarAddress(
       trustline,
       xlmBalance,
       [],
-      trustlineAuthorized
+      trustlineAuthorized,
+      spendableXlmBalance
     );
 
     if (useCache) verificationCache.set(cacheKey, result);

@@ -46,6 +46,7 @@ model Registration {
   trustlineAuthorized Boolean @default(false)
   funded         Boolean   @default(false)
   xlmBalance     String    @default("0")
+  spendableXlmBalance String @default("0")
   lastCheckedAt  DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

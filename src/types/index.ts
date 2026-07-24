@@ -15,6 +15,12 @@ export interface HorizonCheckResult {
    */
   verified: boolean;
   xlm_balance: string;
+  /**
+   * Spendable XLM: raw balance minus the account's minimum reserve
+   * (subentries/sponsorships) and any `selling_liabilities`. Used for the
+   * reserve check instead of the raw balance — see `computeReadiness`.
+   */
+  spendable_xlm_balance: string;
   errors: string[];
   readiness: ReadinessStatus;
 }
@@ -34,6 +40,7 @@ export interface ContributorRow {
   verified: boolean;
   funded: boolean;
   xlmBalance: string;
+  spendableXlmBalance: string;
   lastCheckedAt: string | null;
   readiness: ReadinessStatus;
 }

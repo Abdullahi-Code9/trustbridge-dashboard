@@ -111,9 +111,15 @@ Change both code and issuer together for testnet or custom assets.
 
 ### `NEXT_PUBLIC_MIN_XLM_BALANCE`
 
-Minimum XLM balance for **Ready** status (string parsed as float). Default: `1`
+Minimum **spendable** XLM balance for **Ready** status (string parsed as float). Default: `1`
 
-Accounts below this threshold show **Low Reserve** even with a valid trustline.
+Accounts below this threshold show **Low Reserve** even with a valid trustline. Compared against the spendable balance (raw balance minus reserve and liabilities), not the raw `xlm_balance`.
+
+### `NEXT_PUBLIC_BASE_RESERVE_XLM`
+
+Stellar network base reserve, in XLM, used to compute each account's minimum reserve (string parsed as float). Default: `0.5`
+
+Every Stellar account locks up `baseReserve * (2 + subentry_count + num_sponsoring − num_sponsored)` XLM that cannot be spent. This value rarely changes on mainnet; override only for custom networks or if the protocol-wide base reserve changes. See [Architecture — Readiness rules](./ARCHITECTURE.md#readiness-rules).
 
 ---
 
