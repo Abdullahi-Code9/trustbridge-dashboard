@@ -12,6 +12,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {

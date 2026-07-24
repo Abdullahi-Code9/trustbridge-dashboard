@@ -102,6 +102,7 @@ All docs are cross-linked from this README:
 | [**Project structure**](./docs/PROJECT_STRUCTURE.md) | Directory layout and key files |
 | [**Deployment**](./docs/DEPLOYMENT.md) | Vercel deployment checklist |
 | [**Contributing**](./docs/CONTRIBUTING.md) | How to contribute to this repo |
+| [**CSRF protection**](./docs/CSRF.md) | Threat model, protected routes, non-browser client policy, testing guide |
 
 ---
 
@@ -149,6 +150,10 @@ All docs are cross-linked from this README:
 ### Middleware
 
 `src/middleware.ts` protects `/register` (requires sign-in) and `/dashboard` (requires sign-in + `GITHUB_MAINTAINER_ORG` membership).
+
+### Security — CSRF protection
+
+All mutating API routes (`POST /api/check`, `POST /api/register`, `POST /api/contributors`) validate the `Origin` / `Referer` header against the application's host. Non-browser clients that do not send an `Origin` header are allowed. For full details, see [docs/CSRF.md](./docs/CSRF.md).
 
 ---
 
@@ -225,7 +230,8 @@ Quick flow:
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Commit with clear messages
-4. Open a pull request against `main`
+4. Run tests (`npm run test`)
+5. Open a pull request against `main`
 
 ---
 
