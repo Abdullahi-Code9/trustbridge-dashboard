@@ -6,6 +6,7 @@ import GitHubProvider from "next-auth/providers/github";
 import { prisma } from "@/lib/prisma";
 import { decryptToken, encryptToken } from "@/lib/token-crypto";
 import { recordTokenAudit } from "@/lib/token-audit";
+import { recordAuditLog } from "@/lib/audit";
 
 async function isOrgMember(accessToken: string, org: string): Promise<boolean> {
   try {
@@ -23,6 +24,39 @@ async function isOrgMember(accessToken: string, org: string): Promise<boolean> {
     return orgs.some(
       (entry) => entry.login.toLowerCase() === org.toLowerCase()
     );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks membership of a specific team within a GitHub org via the team
+ * membership endpoint. Mirrors isOrgMember's fail-closed behavior: any
+ * non-ok response (including 403/429 rate limits) or network error resolves
+ * to false rather than throwing, so a GitHub outage never breaks sign-in.
+ */
+async function isTeamMember(
+  accessToken: string,
+  org: string,
+  teamSlug: string,
+  username: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `https://api.github.com/orgs/${encodeURIComponent(org)}/teams/${encodeURIComponent(teamSlug)}/memberships/${encodeURIComponent(username)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      }
+    );
+
+    if (!response.ok) return false;
+
+    const membership = (await response.json()) as { state?: string };
+    return membership.state === "active";
   } catch {
     return false;
   }
@@ -104,10 +138,37 @@ export const authOptions: NextAuthOptions = {
           // it later should call getDecryptedGithubAccessToken(userId).
           const maintainerOrg = process.env.GITHUB_MAINTAINER_ORG?.trim();
           if (maintainerOrg && account.access_token) {
-            token.isMaintainer = await isOrgMember(
+            let isMaintainer = await isOrgMember(
               account.access_token,
               maintainerOrg
             );
+
+            // Optional second tier: within a maintainer org, further scope
+            // access to a specific team. Unset by default, so existing
+            // deployments keep the org-only check with no behavior change.
+            const maintainerTeam = process.env.GITHUB_MAINTAINER_TEAM?.trim();
+            if (isMaintainer && maintainerTeam) {
+              const isOnTeam = await isTeamMember(
+                account.access_token,
+                maintainerOrg,
+                maintainerTeam,
+                githubUsername
+              );
+
+              if (!isOnTeam) {
+                isMaintainer = false;
+                // Best-effort visibility for maintainers auditing near-misses:
+                // a user who cleared the org check but not the team check.
+                await recordAuditLog({
+                  action: "maintainer_access_denied_team",
+                  actorId: user.id,
+                  actorLogin: githubUsername,
+                  metadata: { team: maintainerTeam },
+                });
+              }
+            }
+
+            token.isMaintainer = isMaintainer;
           }
         }
       }
