@@ -42,7 +42,8 @@ export type AuditAction =
   | "recheck.single"
   | "recheck.batch"
   | "registration.create"
-  | "registration.update";
+  | "registration.update"
+  | "maintainer_access_denied_team";
 
 export interface AuditLogEntry {
   id: string;

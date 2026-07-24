@@ -82,13 +82,17 @@ flowchart TB
 | Route | Requirement |
 |-------|-------------|
 | `/register` | Authenticated GitHub user |
-| `/dashboard` | Authenticated + member of `GITHUB_MAINTAINER_ORG` |
+| `/dashboard` | Authenticated + member of `GITHUB_MAINTAINER_ORG` (+ `GITHUB_MAINTAINER_TEAM`, if configured) |
 
-Maintainer check flow:
+Maintainer check flow (two-tier: org, then optionally team):
 
-1. After GitHub OAuth, JWT callback calls `GET https://api.github.com/user/orgs`
-2. Compares org logins against `GITHUB_MAINTAINER_ORG`
-3. Sets `session.user.isMaintainer` boolean
+1. After GitHub OAuth, the JWT callback calls `GET https://api.github.com/user/orgs` and compares org logins against `GITHUB_MAINTAINER_ORG`.
+2. If `GITHUB_MAINTAINER_TEAM` is set and the org check passed, it additionally calls `GET /orgs/{org}/teams/{team_slug}/memberships/{username}` and requires an `active` membership state. `GITHUB_MAINTAINER_TEAM` is optional — when unset, step 2 is skipped entirely and the org check alone determines maintainer status, matching prior behavior.
+3. Sets `session.user.isMaintainer` boolean from the result.
+
+**Fail closed on API errors.** Both checks treat a non-`ok` response (including `403`/`429` rate limiting) or a network failure as "not a member" rather than throwing — a GitHub outage degrades to non-maintainer access, never a crashed sign-in.
+
+**Audit trail.** A user who passes the org check but fails the team check is recorded via `recordAuditLog` (`src/lib/audit.ts`) with action `maintainer_access_denied_team` and `{ team }` metadata, so maintainers can review near-misses through `/api/audit`. Successful checks are not logged individually to avoid noise.
 
 Non-maintainers hitting `/dashboard` are redirected to `/register?error=maintainer`.
 

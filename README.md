@@ -168,6 +168,7 @@ NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=
 TOKEN_ENCRYPTION_KEY=  # required, openssl rand -base64 32 — encrypts stored access tokens
 GITHUB_MAINTAINER_ORG=
+GITHUB_MAINTAINER_TEAM= # optional, team slug within GITHUB_MAINTAINER_ORG — org-only check if unset
 DATABASE_URL=
 NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
 NEXT_PUBLIC_DEFAULT_ASSET_CODE=USDC

@@ -119,6 +119,17 @@ Accounts below this threshold show **Low Reserve** even with a valid trustline.
 
 ## Optional variables
 
+### `GITHUB_MAINTAINER_TEAM`
+
+GitHub team **slug** within `GITHUB_MAINTAINER_ORG`. When set, a user must belong to both the org **and** this team to be treated as a maintainer.
+
+Example: if the team URL is `https://github.com/orgs/stellar/teams/dashboard-maintainers`, set `GITHUB_MAINTAINER_TEAM=dashboard-maintainers`.
+
+- Checked via GitHub API `GET /orgs/{org}/teams/{team_slug}/memberships/{username}` after the org check passes
+- **Unset by default** — the org-only check runs exactly as before, so existing deployments are unaffected
+- A user who passes the org check but fails the team check is denied and an audit log entry (`maintainer_access_denied_team`) is recorded, visible via `/api/audit`
+- A GitHub API error or rate limit on either check fails closed (`isMaintainer = false`) rather than blocking sign-in
+
 ### `SOROBAN_CONTRACT_ID`
 
 Soroban contract ID for future on-chain registry integration, and the contract the maintainer dashboard's **Soroban event timeline** panel reads events for.
