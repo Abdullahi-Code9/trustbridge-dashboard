@@ -206,6 +206,12 @@ Key components:
 
 ## Security considerations
 
+- **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` never exposed to client
+- **Horizon calls server-side** — `/api/check` prevents CORS/rate-limit issues and keeps validation logic centralized
+- **Maintainer API guard** — `/api/contributors` verifies `isMaintainer` on every request
+- **CSRF protection on mutating routes** — `POST /api/check`, `POST /api/register`, `POST /api/contributors` validate `Origin`/`Referer` against allowed hosts (see [docs/CSRF.md](../docs/CSRF.md))
+- **Rate limiting on `/api/check`** — per-IP sliding window (default 10 req/min) prevents Horizon abuse; configurable via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_REQUESTS`
+- **CSV / JSON exports** — `src/lib/csv.ts` provides `buildCsv` and `buildJson` with snapshot-tested output; used by the maintainer dashboard for Wave payout prep
 - **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET`, `TOKEN_ENCRYPTION_KEY` never exposed to client
 - **Tokens encrypted at rest** — `User.accessToken` is AES-256-GCM ciphertext; sign-in fails closed (stores nothing) if `TOKEN_ENCRYPTION_KEY` is missing or malformed rather than falling back to plaintext
 - **No client-side access tokens** — the GitHub access token never appears on the NextAuth JWT or `session` object; it exists only encrypted in PostgreSQL, decrypted on demand server-side via `getDecryptedGithubAccessToken()`
