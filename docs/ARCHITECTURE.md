@@ -200,6 +200,7 @@ Key components:
 - **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` never exposed to client
 - **Horizon calls server-side** — `/api/check` prevents CORS/rate-limit issues and keeps validation logic centralized
 - **Maintainer API guard** — `/api/contributors` verifies `isMaintainer` on every request
+- **CSRF protection on mutating routes** — `POST /api/check`, `POST /api/register`, `POST /api/contributors` validate `Origin`/`Referer` against allowed hosts (see [docs/CSRF.md](../docs/CSRF.md))
 - **Address uniqueness** — prevents duplicate payout mappings
 
 ---

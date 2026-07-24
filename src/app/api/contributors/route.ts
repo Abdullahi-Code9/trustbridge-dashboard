@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
+import { assertSameOrigin } from "@/lib/csrf";
 import { authOptions } from "@/lib/auth";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
 
@@ -24,7 +25,10 @@ export async function GET() {
   return NextResponse.json({ contributors });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
+
   if (!(await requireMaintainer())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

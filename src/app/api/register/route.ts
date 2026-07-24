@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 
+import { assertSameOrigin } from "@/lib/csrf";
 import { authOptions } from "@/lib/auth";
 import { DEFAULT_ASSET } from "@/lib/constants";
 import { checkStellarAddress } from "@/lib/horizon";
@@ -11,6 +12,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
