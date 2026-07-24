@@ -216,7 +216,7 @@ Key components:
 - **Tokens encrypted at rest** — `User.accessToken` is AES-256-GCM ciphertext; sign-in fails closed (stores nothing) if `TOKEN_ENCRYPTION_KEY` is missing or malformed rather than falling back to plaintext
 - **No client-side access tokens** — the GitHub access token never appears on the NextAuth JWT or `session` object; it exists only encrypted in PostgreSQL, decrypted on demand server-side via `getDecryptedGithubAccessToken()`
 - **Horizon calls server-side** — `/api/check` and `/api/actions/lookup` prevent CORS/rate-limit issues and keep validation logic centralized
-- **Maintainer API guard** — `/api/contributors` and `/api/soroban/events` verify `isMaintainer` on every request
+- **Maintainer API guard** — `/api/contributors`, `/api/soroban/events`, and `/api/settings/network` verify `isMaintainer` on every request
 - **Address uniqueness** — prevents duplicate payout mappings
 
 ---
@@ -230,6 +230,20 @@ Key components:
 ## Soroban event timeline
 
 The maintainer dashboard's **Soroban event timeline** panel (`src/components/SorobanEventTimeline.tsx`) shows recent contract events for `SOROBAN_CONTRACT_ID`, fetched server-side via `getSorobanEventTimeline()` (`src/lib/soroban.ts`) using `stellar-sdk`'s Soroban RPC client (`SOROBAN_RPC_URL`, default `soroban-testnet.stellar.org`). Exposed through `GET /api/soroban/events` (maintainer-only). RPC outages, rate limits, or a missing `SOROBAN_CONTRACT_ID` never throw — they surface as an `errors` array the panel renders inline, with an empty event list.
+
+---
+
+## Network hardening
+
+Horizon and Soroban RPC network selection is env-var driven (`NEXT_PUBLIC_HORIZON_URL`, `SOROBAN_RPC_URL`) with independent defaults that do not agree with each other — Horizon defaults to **mainnet**, Soroban RPC defaults to **testnet**. Left unchecked, this lets a maintainer validate contributor funding against one network while reading Soroban events from another with no indication anything is wrong.
+
+[`src/lib/network-config.ts`](../src/lib/network-config.ts) classifies each resolved URL by hostname (`mainnet` / `testnet` / `custom`) and flags `mismatched: true` only when both URLs resolve to two different *known* named networks — a custom or self-hosted RPC endpoint on either side is never treated as a false positive, since it cannot be confidently classified.
+
+- **API:** `GET /api/settings/network` (maintainer-only) returns the current classification and any warnings.
+- **UI:** the `NetworkStatusPanel` component (`src/components/NetworkStatusPanel.tsx`) renders on `/dashboard`, showing the Horizon/Soroban network badges and a warning banner when mismatched.
+- **Audit trail:** a mismatch writes a `network_config_mismatch_detected` entry to the existing `AuditLog` table via `recordAuditLog()`, visible through `GET /api/audit`.
+
+This is intentionally read-only and additive — it surfaces the misconfiguration rather than attempting to auto-correct it, since the "right" network is a deployment decision, not something the dashboard can infer.
 
 ---
 

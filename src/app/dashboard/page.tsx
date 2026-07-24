@@ -7,6 +7,7 @@ import {
   ContributorTable,
   exportContributorsCsv,
 } from "@/components/ContributorTable";
+import { NetworkStatusPanel } from "@/components/NetworkStatusPanel";
 import { SorobanEventTimeline } from "@/components/SorobanEventTimeline";
 import { WaveReadinessBar } from "@/components/WaveReadinessBar";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { countReadyContributors } from "@/lib/contributors";
-import type { ContributorRow, SorobanEventTimelineResponse } from "@/types";
+import type {
+  ContributorRow,
+  NetworkConfig,
+  SorobanEventTimelineResponse,
+} from "@/types";
 
 interface ContributorsResponse {
   contributors: ContributorRow[];
@@ -51,12 +56,41 @@ export default function DashboardPage() {
     },
   });
 
+  const recheckOneMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/contributors/${id}`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Re-check failed");
+      return (await response.json()) as { contributor: ContributorRow };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<ContributorsResponse>(
+        ["contributors"],
+        (current) => ({
+          contributors: (current?.contributors ?? []).map((row) =>
+            row.id === data.contributor.id ? data.contributor : row
+          ),
+        })
+      );
+    },
+  });
+
   const sorobanQuery = useQuery({
     queryKey: ["soroban-events"],
     queryFn: async () => {
       const response = await fetch("/api/soroban/events");
       if (!response.ok) throw new Error("Failed to load Soroban events");
       return (await response.json()) as SorobanEventTimelineResponse;
+    },
+  });
+
+  const networkQuery = useQuery({
+    queryKey: ["network-config"],
+    queryFn: async () => {
+      const response = await fetch("/api/settings/network");
+      if (!response.ok) throw new Error("Failed to load network config");
+      return (await response.json()) as NetworkConfig;
     },
   });
 
@@ -86,6 +120,10 @@ export default function DashboardPage() {
           Re-check all
         </Button>
       </div>
+
+      {networkQuery.data && (
+        <NetworkStatusPanel config={networkQuery.data} className="mb-8" />
+      )}
 
       <Card className="mb-8">
         <CardHeader>

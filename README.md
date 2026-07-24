@@ -150,6 +150,7 @@ All docs are cross-linked from this README:
 | `/api/stats` | GET | Aggregate readiness statistics |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
+| `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
 
 ### Resilience
 
@@ -187,6 +188,8 @@ NEXT_PUBLIC_MIN_XLM_BALANCE=1
 SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
 SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
 ```
+
+> **Note:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` should point at the same Stellar network. Their defaults don't (mainnet vs. testnet) — the dashboard detects and warns on this mismatch via `/api/settings/network` and the maintainer dashboard's network status panel, and records it to the audit log.
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.
 
