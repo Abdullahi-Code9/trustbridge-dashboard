@@ -20,6 +20,16 @@ export const MIN_XLM_BALANCE = parseMinXlmBalance(
   process.env.NEXT_PUBLIC_MIN_XLM_BALANCE
 );
 
+function parseBaseReserveXlm(value: string | undefined): number {
+  const parsed = Number(value ?? "0.5");
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0.5;
+}
+
+/** Stellar network base reserve, in XLM, per subentry/sponsorship unit. */
+export const BASE_RESERVE_XLM = parseBaseReserveXlm(
+  process.env.NEXT_PUBLIC_BASE_RESERVE_XLM
+);
+
 export function buildLobstrTrustlineUrl(asset = DEFAULT_ASSET): string {
   const params = new URLSearchParams({
     asset_code: asset.code,

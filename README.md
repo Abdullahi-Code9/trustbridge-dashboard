@@ -36,8 +36,8 @@
 
 | Status | Badge | Meaning |
 |--------|-------|---------|
-| **Ready** | ✅ | Funded, USDC trustline active **and authorized**, XLM ≥ minimum reserve |
-| **Low reserve** | ⚠️ | Funded + authorized trustline, but XLM below threshold |
+| **Ready** | ✅ | Funded, USDC trustline active **and authorized**, spendable XLM ≥ minimum reserve |
+| **Low reserve** | ⚠️ | Funded + authorized trustline, but spendable XLM below threshold |
 | **Not ready** | ❌ | Unfunded, missing trustline, **or a present-but-unauthorized trustline** |
 
 > **Authorization matters:** a trustline can exist but remain *unauthorized* by the
@@ -45,6 +45,15 @@
 > trustline still fail, so the dashboard tracks `is_authorized` separately and an
 > account is only **verified** (✅ on-chain badge) when funded **and** holding an
 > authorized trustline.
+
+> **Spendable vs. raw XLM:** every Stellar account must keep a minimum reserve
+> locked up — `baseReserve * (2 + subentries + sponsoring − sponsored)` — plus
+> any XLM tied up in `selling_liabilities`. That reserve is not available for
+> payments, so the reserve check compares against **spendable** XLM
+> (`spendableXlmBalance`), not the raw `xlm_balance`. A contributor with 5 XLM
+> raw balance and 3 trustlines can show ~3.5 XLM locked in reserve, leaving
+> well under 1 XLM spendable — this is `low_reserve`, not `ready`, even though
+> the raw balance alone looks healthy.
 
 ---
 
@@ -185,6 +194,7 @@ NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
 NEXT_PUBLIC_DEFAULT_ASSET_CODE=USDC
 NEXT_PUBLIC_DEFAULT_ASSET_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6
 NEXT_PUBLIC_MIN_XLM_BALANCE=1
+NEXT_PUBLIC_BASE_RESERVE_XLM=0.5  # optional, Stellar base reserve used for spendable-balance checks
 SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
 SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
 ```
@@ -216,9 +226,10 @@ npm run test:watch
 
 Tests also run in CI on every push and pull request, before the build.
 
-> **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`
-> and issue #22 adds an `AuditLog` table. After pulling these changes, sync your
-> database with `npm run db:push`.
+> **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`,
+> issue #22 adds an `AuditLog` table, and issue #8 adds a `spendableXlmBalance`
+> column to `Registration`. After pulling these changes, sync your database with
+> `npm run db:push`.
 
 ---
 

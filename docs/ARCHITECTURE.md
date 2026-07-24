@@ -108,7 +108,7 @@ User
 
 Registration
 ├── stellarAddress (unique)
-├── funded, trustlineReady, xlmBalance
+├── funded, trustlineReady, xlmBalance, spendableXlmBalance
 └── lastCheckedAt
 
 TokenAuditLog
@@ -130,19 +130,31 @@ Implemented in `src/lib/horizon.ts` using **stellar-sdk** `Horizon.Server`.
 
 1. Validate G-address format via `StrKey.isValidEd25519PublicKey`
 2. `server.loadAccount(address)` — 404 means unfunded
-3. Parse native XLM balance from `account.balances`
+3. Parse native XLM balance from `account.balances`, then compute the
+   **spendable** balance (`computeSpendableXlmBalance()`) by subtracting the
+   Stellar minimum reserve (`BASE_RESERVE_XLM * (2 + subentry_count +
+   num_sponsoring − num_sponsored)`) and any `selling_liabilities`
 4. Check for matching asset trustline (`asset_code` + `asset_issuer`)
-5. Compute readiness via `computeReadiness()` in `src/lib/stellar.ts`
+5. Compute readiness via `computeReadiness()` in `src/lib/readiness.ts`, using
+   the spendable balance for the reserve check
 
 ### Readiness rules
 
 | Condition | Status |
 |-----------|--------|
 | Not funded OR no trustline | `not_ready` |
-| Funded + trustline, XLM < `NEXT_PUBLIC_MIN_XLM_BALANCE` | `low_reserve` |
-| Funded + trustline + sufficient XLM | `ready` |
+| Funded + trustline, spendable XLM < `NEXT_PUBLIC_MIN_XLM_BALANCE` | `low_reserve` |
+| Funded + trustline + sufficient spendable XLM | `ready` |
 
 Default asset: **USDC** on Stellar mainnet (configurable via env).
+
+Raw balance overstates what an account can actually spend: every Stellar
+account locks up a minimum reserve for its subentries (trustlines, offers,
+signers) and sponsorships, plus any XLM tied up in open sell offers. The
+reserve check above therefore runs against `spendableXlmBalance`
+(`spendable_xlm_balance` in the Horizon check response), not the raw
+`xlm_balance`, so a funded account with trustlines eating its reserve is
+correctly flagged `low_reserve` rather than `ready`.
 
 ---
 
@@ -181,7 +193,7 @@ Registration enforces:
 2. **Re-check all** — `POST /api/contributors` batch-queries Horizon, updates DB
 3. **Export CSV** — client-side download via `exportContributorsCsv()`
 
-CSV columns: `github_username`, `stellar_address`, `readiness`, `funded`, `trustline`, `xlm_balance`, `last_checked_at`
+CSV columns: `github_username`, `stellar_address`, `readiness`, `funded`, `trustline`, `trustline_authorized`, `verified`, `xlm_balance`, `last_checked_at`, `spendable_xlm_balance`
 
 ---
 

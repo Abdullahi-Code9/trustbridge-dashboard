@@ -222,6 +222,7 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     "verified",
     "xlm_balance",
     "last_checked_at",
+    "spendable_xlm_balance",
   ];
 
   const rows = contributors.map((row) => [
@@ -234,6 +235,7 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     row.verified,
     row.xlmBalance,
     row.lastCheckedAt ?? "",
+    row.spendableXlmBalance,
   ]);
 
   const csv = buildCsv(headers, rows);

@@ -13,6 +13,7 @@ function result(overrides: Partial<HorizonCheckResult>): HorizonCheckResult {
     trustline_authorized: false,
     verified: false,
     xlm_balance: "0",
+    spendable_xlm_balance: "0",
     errors: [],
     readiness: "not_ready",
     ...overrides,
