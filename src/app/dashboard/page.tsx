@@ -7,6 +7,7 @@ import {
   ContributorTable,
   exportContributorsCsv,
 } from "@/components/ContributorTable";
+import { NetworkStatusPanel } from "@/components/NetworkStatusPanel";
 import { SorobanEventTimeline } from "@/components/SorobanEventTimeline";
 import { WaveReadinessBar } from "@/components/WaveReadinessBar";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { countReadyContributors } from "@/lib/contributors";
-import type { ContributorRow, SorobanEventTimelineResponse } from "@/types";
+import type {
+  ContributorRow,
+  NetworkConfig,
+  SorobanEventTimelineResponse,
+} from "@/types";
 
 interface ContributorsResponse {
   contributors: ContributorRow[];
@@ -61,17 +66,16 @@ export default function DashboardPage() {
         method: "POST",
       });
       if (!response.ok) throw new Error("Re-check failed");
-      return (await response.json()) as ContributorResponse;
+      return (await response.json()) as { contributor: ContributorRow };
     },
     onSuccess: (data) => {
       queryClient.setQueryData<ContributorsResponse>(
         ["contributors"],
-        (current) =>
-          current && {
-            contributors: current.contributors.map((row) =>
-              row.id === data.contributor.id ? data.contributor : row
-            ),
-          }
+        (current) => ({
+          contributors: (current?.contributors ?? []).map((row) =>
+            row.id === data.contributor.id ? data.contributor : row
+          ),
+        })
       );
     },
   });
@@ -82,6 +86,15 @@ export default function DashboardPage() {
       const response = await fetch("/api/soroban/events");
       if (!response.ok) throw new Error("Failed to load Soroban events");
       return (await response.json()) as SorobanEventTimelineResponse;
+    },
+  });
+
+  const networkQuery = useQuery({
+    queryKey: ["network-config"],
+    queryFn: async () => {
+      const response = await fetch("/api/settings/network");
+      if (!response.ok) throw new Error("Failed to load network config");
+      return (await response.json()) as NetworkConfig;
     },
   });
 
@@ -112,6 +125,10 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {networkQuery.data && (
+        <NetworkStatusPanel config={networkQuery.data} className="mb-8" />
+      )}
+
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Wave overview</CardTitle>
@@ -138,6 +155,9 @@ export default function DashboardPage() {
       ) : (
         <ContributorTable
           contributors={contributors}
+          onExport={() => {
+            exportContributorsCsv(contributors);
+          }}
           onExport={() => exportContributorsCsv(contributors)}
           onRecheck={(id) => recheckOneMutation.mutate(id)}
           recheckingId={

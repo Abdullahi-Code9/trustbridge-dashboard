@@ -138,6 +138,10 @@ All docs are cross-linked from this README:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/[...nextauth]` | GET/POST | NextAuth.js handlers |
+| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
+| `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
+| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
+| `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
@@ -146,14 +150,22 @@ All docs are cross-linked from this README:
 | `/api/stats` | GET | Aggregate readiness statistics |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
+| `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
+
+### Resilience
+
+- **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
+- **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If any contributor hasn't been verified within the configured window (default 24h), the dashboard shows an amber warning banner and requires confirmation before exporting. Configurable via `STALE_CSV_MAX_AGE_MS`.
 
 ### Middleware
 
 `src/middleware.ts` protects `/register` (requires sign-in) and `/dashboard` (requires sign-in + `GITHUB_MAINTAINER_ORG` membership).
 
-### Security — CSRF protection
+### Security
 
-All mutating API routes (`POST /api/check`, `POST /api/register`, `POST /api/contributors`) validate the `Origin` / `Referer` header against the application's host. Non-browser clients that do not send an `Origin` header are allowed. For full details, see [docs/CSRF.md](./docs/CSRF.md).
+- **CSRF protection** — All mutating API routes validate the `Origin` / `Referer` header against the application's host. See [docs/CSRF.md](./docs/CSRF.md).
+- **Rate limiting** — `POST /api/check` is rate-limited per IP (default 10 requests per minute) to prevent Horizon API abuse. Configure via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_REQUESTS`.
+- **CSV / JSON exports** — Maintainer dashboard exports contributor data as CSV or JSON. Export helpers live in `src/lib/csv.ts` and are covered by snapshot tests.
 
 ---
 
@@ -176,6 +188,8 @@ NEXT_PUBLIC_MIN_XLM_BALANCE=1
 SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
 SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
 ```
+
+> **Note:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` should point at the same Stellar network. Their defaults don't (mainnet vs. testnet) — the dashboard detects and warns on this mismatch via `/api/settings/network` and the maintainer dashboard's network status panel, and records it to the audit log.
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.
 

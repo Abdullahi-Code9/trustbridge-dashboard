@@ -95,6 +95,8 @@ Horizon API base URL.
 
 Must match the network your contributors use.
 
+> **Network consistency:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` (below) should point at the **same** Stellar network. The project's own defaults do not — Horizon defaults to mainnet while `SOROBAN_RPC_URL` defaults to testnet — so a maintainer who only sets one of the two can end up validating contributor funding against a different network than the one Soroban events are read from. The dashboard detects this: `GET /api/settings/network` (maintainer-only) and the "Network configuration" panel on `/dashboard` compare the resolved networks and show a warning banner when they mismatch, and a `network_config_mismatch_detected` entry is written to the audit log (visible via `GET /api/audit`) so the misconfiguration has a durable record. See [`src/lib/network-config.ts`](../src/lib/network-config.ts).
+
 ### `NEXT_PUBLIC_DEFAULT_ASSET_CODE`
 
 Asset code for trustline checks. Default: `USDC`
@@ -133,6 +135,8 @@ Soroban RPC endpoint used to fetch contract events for the timeline panel. Defau
 |---------|-----|
 | Mainnet | `https://mainnet.sorobanrpc.com` |
 | Testnet | `https://soroban-testnet.stellar.org` |
+
+**Keep this on the same network as `NEXT_PUBLIC_HORIZON_URL` above.** The default here is testnet while the default Horizon URL is mainnet — see the network consistency note above and [Architecture — network hardening](./ARCHITECTURE.md#network-hardening) for how the mismatch is surfaced.
 
 ---
 
