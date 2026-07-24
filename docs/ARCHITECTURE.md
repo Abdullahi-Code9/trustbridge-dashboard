@@ -201,6 +201,7 @@ Key components:
 - **Horizon calls server-side** — `/api/check` prevents CORS/rate-limit issues and keeps validation logic centralized
 - **Maintainer API guard** — `/api/contributors` verifies `isMaintainer` on every request
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps `server.loadAccount()` with a CLOSED/OPEN/HALF_OPEN state machine. Fast-fails after 5 consecutive errors, recovers after a configurable timeout (default 30s). Prevents cascading failures during Horizon outages and protects batch re-check at 100+ contributor scale.
+- **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If data is older than the configured threshold (default 24h), the maintainer dashboard shows a warning banner and requires confirmation, preventing payout failures from stale address data.
 - **Address uniqueness** — prevents duplicate payout mappings
 
 ---
