@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
+import { assertSameOrigin } from "@/lib/csrf";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
 
 export const runtime = "nodejs";
@@ -16,7 +17,10 @@ export async function GET() {
   return NextResponse.json({ contributors });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
+
   const session = await requireMaintainerSession();
   if (!session) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

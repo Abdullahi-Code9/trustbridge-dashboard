@@ -54,6 +54,7 @@ export function AddressInput({
         trustline_authorized: false,
         verified: false,
         xlm_balance: "0",
+        spendable_xlm_balance: "0",
         errors: ["Unable to reach validation service"],
         readiness: "not_ready",
       });
@@ -115,6 +116,10 @@ export function AddressInput({
             <div>
               <dt className="text-muted-foreground">XLM balance</dt>
               <dd className="font-medium">{result.xlm_balance} XLM</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Spendable XLM</dt>
+              <dd className="font-medium">{result.spendable_xlm_balance} XLM</dd>
             </div>
           </dl>
           {result.errors.length > 0 && (

@@ -112,7 +112,7 @@ User
 
 Registration
 ├── stellarAddress (unique)
-├── funded, trustlineReady, xlmBalance
+├── funded, trustlineReady, xlmBalance, spendableXlmBalance
 └── lastCheckedAt
 
 TokenAuditLog
@@ -134,19 +134,31 @@ Implemented in `src/lib/horizon.ts` using **stellar-sdk** `Horizon.Server`.
 
 1. Validate G-address format via `StrKey.isValidEd25519PublicKey`
 2. `server.loadAccount(address)` — 404 means unfunded
-3. Parse native XLM balance from `account.balances`
+3. Parse native XLM balance from `account.balances`, then compute the
+   **spendable** balance (`computeSpendableXlmBalance()`) by subtracting the
+   Stellar minimum reserve (`BASE_RESERVE_XLM * (2 + subentry_count +
+   num_sponsoring − num_sponsored)`) and any `selling_liabilities`
 4. Check for matching asset trustline (`asset_code` + `asset_issuer`)
-5. Compute readiness via `computeReadiness()` in `src/lib/stellar.ts`
+5. Compute readiness via `computeReadiness()` in `src/lib/readiness.ts`, using
+   the spendable balance for the reserve check
 
 ### Readiness rules
 
 | Condition | Status |
 |-----------|--------|
 | Not funded OR no trustline | `not_ready` |
-| Funded + trustline, XLM < `NEXT_PUBLIC_MIN_XLM_BALANCE` | `low_reserve` |
-| Funded + trustline + sufficient XLM | `ready` |
+| Funded + trustline, spendable XLM < `NEXT_PUBLIC_MIN_XLM_BALANCE` | `low_reserve` |
+| Funded + trustline + sufficient spendable XLM | `ready` |
 
 Default asset: **USDC** on Stellar mainnet (configurable via env).
+
+Raw balance overstates what an account can actually spend: every Stellar
+account locks up a minimum reserve for its subentries (trustlines, offers,
+signers) and sponsorships, plus any XLM tied up in open sell offers. The
+reserve check above therefore runs against `spendableXlmBalance`
+(`spendable_xlm_balance` in the Horizon check response), not the raw
+`xlm_balance`, so a funded account with trustlines eating its reserve is
+correctly flagged `low_reserve` rather than `ready`.
 
 ---
 
@@ -185,7 +197,7 @@ Registration enforces:
 2. **Re-check all** — `POST /api/contributors` batch-queries Horizon, updates DB
 3. **Export CSV** — client-side download via `exportContributorsCsv()`
 
-CSV columns: `github_username`, `stellar_address`, `readiness`, `funded`, `trustline`, `xlm_balance`, `last_checked_at`
+CSV columns: `github_username`, `stellar_address`, `readiness`, `funded`, `trustline`, `trustline_authorized`, `verified`, `xlm_balance`, `last_checked_at`, `spendable_xlm_balance`
 
 ---
 
@@ -210,11 +222,17 @@ Key components:
 
 ## Security considerations
 
+- **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` never exposed to client
+- **Horizon calls server-side** — `/api/check` prevents CORS/rate-limit issues and keeps validation logic centralized
+- **Maintainer API guard** — `/api/contributors` verifies `isMaintainer` on every request
+- **CSRF protection on mutating routes** — `POST /api/check`, `POST /api/register`, `POST /api/contributors` validate `Origin`/`Referer` against allowed hosts (see [docs/CSRF.md](../docs/CSRF.md))
+- **Rate limiting on `/api/check`** — per-IP sliding window (default 10 req/min) prevents Horizon abuse; configurable via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_REQUESTS`
+- **CSV / JSON exports** — `src/lib/csv.ts` provides `buildCsv` and `buildJson` with snapshot-tested output; used by the maintainer dashboard for Wave payout prep
 - **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET`, `TOKEN_ENCRYPTION_KEY` never exposed to client
 - **Tokens encrypted at rest** — `User.accessToken` is AES-256-GCM ciphertext; sign-in fails closed (stores nothing) if `TOKEN_ENCRYPTION_KEY` is missing or malformed rather than falling back to plaintext
 - **No client-side access tokens** — the GitHub access token never appears on the NextAuth JWT or `session` object; it exists only encrypted in PostgreSQL, decrypted on demand server-side via `getDecryptedGithubAccessToken()`
 - **Horizon calls server-side** — `/api/check` and `/api/actions/lookup` prevent CORS/rate-limit issues and keep validation logic centralized
-- **Maintainer API guard** — `/api/contributors` and `/api/soroban/events` verify `isMaintainer` on every request
+- **Maintainer API guard** — `/api/contributors`, `/api/soroban/events`, and `/api/settings/network` verify `isMaintainer` on every request
 - **Address uniqueness** — prevents duplicate payout mappings
 
 ---
@@ -231,9 +249,53 @@ The maintainer dashboard's **Soroban event timeline** panel (`src/components/Sor
 
 ---
 
+## Network hardening
+
+Horizon and Soroban RPC network selection is env-var driven (`NEXT_PUBLIC_HORIZON_URL`, `SOROBAN_RPC_URL`) with independent defaults that do not agree with each other — Horizon defaults to **mainnet**, Soroban RPC defaults to **testnet**. Left unchecked, this lets a maintainer validate contributor funding against one network while reading Soroban events from another with no indication anything is wrong.
+
+[`src/lib/network-config.ts`](../src/lib/network-config.ts) classifies each resolved URL by hostname (`mainnet` / `testnet` / `custom`) and flags `mismatched: true` only when both URLs resolve to two different *known* named networks — a custom or self-hosted RPC endpoint on either side is never treated as a false positive, since it cannot be confidently classified.
+
+- **API:** `GET /api/settings/network` (maintainer-only) returns the current classification and any warnings.
+- **UI:** the `NetworkStatusPanel` component (`src/components/NetworkStatusPanel.tsx`) renders on `/dashboard`, showing the Horizon/Soroban network badges and a warning banner when mismatched.
+- **Audit trail:** a mismatch writes a `network_config_mismatch_detected` entry to the existing `AuditLog` table via `recordAuditLog()`, visible through `GET /api/audit`.
+
+This is intentionally read-only and additive — it surfaces the misconfiguration rather than attempting to auto-correct it, since the "right" network is a deployment decision, not something the dashboard can infer.
+
+---
+
 ## Future: Soroban registry
 
-When `SOROBAN_CONTRACT_ID` is set, registrations can be mirrored to a Soroban smart contract for trustless, on-chain contributor registry. The PostgreSQL layer remains the query-optimized source for dashboard aggregations; contract writes would happen in `/api/register` post-save.
+This section covers the full lifecycle of Soroban integration: the read path that ships today, and the write-through path that is designed but intentionally **not yet implemented**.
+
+### Read path (implemented today)
+
+- `getSorobanEventTimeline()` (`src/lib/soroban.ts`) opens a `stellar-sdk` `rpc.Server` against `SOROBAN_RPC_URL` (default `soroban-testnet.stellar.org`), reads the latest ledger, and fetches recent events for `SOROBAN_CONTRACT_ID` over a fixed ~7-hour ledger window.
+- Exposed via `GET /api/soroban/events` (`src/app/api/soroban/events/route.ts`), guarded by `isMaintainer` — same guard pattern as `/api/contributors`.
+- **Never throws.** A missing `SOROBAN_CONTRACT_ID` short-circuits before any RPC call and returns `{ events: [], latestLedger: 0, errors: ["SOROBAN_CONTRACT_ID is not configured"] }`. An RPC failure (outage, rate limit, timeout) is caught and returns `{ events: [], latestLedger: 0, errors: ["Soroban RPC error: <message>"] }`. Either way the API responds `200` with an `errors` array the `SorobanEventTimeline` panel renders inline — the maintainer dashboard degrades gracefully instead of failing.
+- No caching layer sits in front of this call today (unlike `/api/actions/lookup`, which caches Horizon reads for 30s in `src/lib/cache.ts`); each request re-queries the RPC endpoint. A cache would be a reasonable addition if this panel sees high-frequency polling.
+- Unit coverage: `src/lib/soroban.test.ts` (success, missing config, RPC failure) and `src/app/api/soroban/events/route.test.ts` (maintainer guard: 403 for anonymous/non-maintainer, 200 with the timeline payload for a maintainer).
+
+### Write-through path (design only — not implemented)
+
+No code path writes to a Soroban contract today. `/api/register` (`src/app/api/register/route.ts`) only performs a Horizon check and a Prisma upsert. This section documents the intended design so a future contributor can implement it consistently and safely:
+
+- **PostgreSQL stays the source of truth.** A Soroban write is a mirror, not a replacement — dashboard reads, Wave aggregation, and CSV export continue to query Postgres exclusively.
+- **Ordering:** the contract write would be attempted in `/api/register`'s `POST` handler **after** `prisma.registration.upsert()` resolves successfully — never before, and never in a way that blocks or gates the Postgres write.
+- **Best-effort and failure-isolated:** the write attempt must be wrapped so that a Soroban RPC outage, rate limit, or a missing `SOROBAN_CONTRACT_ID` can never fail the request or roll back the registration. The existing `getSorobanEventTimeline()` "never throw, return an `errors` array" convention is the model to follow — e.g. a `mirrorRegistrationToSoroban()` helper that returns a result/error object rather than throwing, called with its outcome logged (not surfaced as a request failure) and never `await`-blocking the HTTP response on-chain confirmation.
+- **Zero on-chain dependency for the core flow:** contributors must be able to register successfully with `SOROBAN_CONTRACT_ID` unset entirely, exactly as today.
+- **Where it would live:** a new `src/lib/soroban-register.ts` (or an addition to `src/lib/soroban.ts`) exporting the write helper, invoked from `/api/register`'s `POST` handler per the ordering above.
+
+### Edge cases
+
+| Case | Read path (today) | Write-through (design) |
+|------|--------------------|--------------------------|
+| RPC outage / timeout | Caught, `errors: ["Soroban RPC error: ..."]`, empty events, `200` response | Caught, logged, registration still succeeds |
+| Missing/invalid `SOROBAN_CONTRACT_ID` | Short-circuits before any RPC call, `errors: ["SOROBAN_CONTRACT_ID is not configured"]` | Write attempt skipped entirely; registration unaffected |
+| Rate limiting | Same as outage — surfaces in `errors`, no throw | Same as outage — best-effort, never blocks Postgres |
+
+### Out of scope for this iteration
+
+End-to-end/browser coverage (e.g. Playwright) for the event timeline panel and any future write-through flow is a deliberate follow-up, not a gap in this pass — this repo currently has no Playwright/e2e harness, and adding one is a separate infrastructure change (new CI browser setup) tracked independently of this documentation and unit/API test work.
 
 ---
 

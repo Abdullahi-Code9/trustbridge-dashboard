@@ -15,6 +15,12 @@ export interface HorizonCheckResult {
    */
   verified: boolean;
   xlm_balance: string;
+  /**
+   * Spendable XLM: raw balance minus the account's minimum reserve
+   * (subentries/sponsorships) and any `selling_liabilities`. Used for the
+   * reserve check instead of the raw balance — see `computeReadiness`.
+   */
+  spendable_xlm_balance: string;
   errors: string[];
   readiness: ReadinessStatus;
 }
@@ -34,6 +40,7 @@ export interface ContributorRow {
   verified: boolean;
   funded: boolean;
   xlmBalance: string;
+  spendableXlmBalance: string;
   lastCheckedAt: string | null;
   readiness: ReadinessStatus;
 }
@@ -43,7 +50,7 @@ export type AuditAction =
   | "recheck.batch"
   | "registration.create"
   | "registration.update"
-  | "maintainer_access_denied_team";
+  | "network_config_mismatch_detected";
 
 export interface AuditLogEntry {
   id: string;
@@ -79,4 +86,16 @@ export interface SorobanEventTimelineResponse {
   events: SorobanEventRow[];
   latestLedger: number;
   errors: string[];
+}
+
+export type StellarNetwork = "mainnet" | "testnet" | "custom";
+
+export interface NetworkConfig {
+  horizonUrl: string;
+  horizonNetwork: StellarNetwork;
+  sorobanUrl: string;
+  sorobanNetwork: StellarNetwork;
+  sorobanContractConfigured: boolean;
+  mismatched: boolean;
+  warnings: string[];
 }

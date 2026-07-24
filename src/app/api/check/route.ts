@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 
+import { NextResponse } from "next/server";
+
 import { assertSameOrigin } from "@/lib/csrf";
+import { extractClientIp, checkRateLimit } from "@/lib/rate-limit";
 import { jsonCheckError, jsonCheckResult } from "@/lib/check-api";
 import { DEFAULT_ASSET } from "@/lib/constants";
 import { checkStellarAddress } from "@/lib/horizon";
@@ -11,6 +14,15 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   const csrf = assertSameOrigin(request);
   if (csrf) return csrf;
+
+  const clientIp = extractClientIp(request);
+  const rateLimit = checkRateLimit(clientIp);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { errors: ["Rate limit exceeded. Please try again later."] },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfter) } }
+    );
+  }
 
   try {
     const body = (await request.json()) as CheckAddressPayload;

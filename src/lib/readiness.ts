@@ -1,4 +1,4 @@
-import { MIN_XLM_BALANCE } from "@/lib/constants";
+import { BASE_RESERVE_XLM, MIN_XLM_BALANCE } from "@/lib/constants";
 import type { HorizonCheckResult, ReadinessStatus } from "@/types";
 
 export interface ReadinessDisplayConfig {
@@ -15,6 +15,44 @@ export function parseXlmBalance(xlmBalance: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export interface SpendableBalanceOptions {
+  /** XLM reserved per subentry/sponsorship unit. Defaults to `BASE_RESERVE_XLM`. */
+  baseReserve?: number;
+  subentryCount?: number;
+  numSponsoring?: number;
+  numSponsored?: number;
+  /** Native balance line's `selling_liabilities`, if any (not spendable). */
+  sellingLiabilities?: string;
+}
+
+/**
+ * Every Stellar account must keep a minimum reserve of
+ * `baseReserve * (2 + subentries + sponsoring - sponsored)` locked up, and
+ * any XLM committed to open sell offers (`selling_liabilities`) is likewise
+ * unavailable for payments. The raw native balance therefore overstates what
+ * an account can actually spend — this computes the true spendable amount.
+ */
+export function computeSpendableXlmBalance(
+  rawBalance: string,
+  opts: SpendableBalanceOptions = {}
+): string {
+  const {
+    baseReserve = BASE_RESERVE_XLM,
+    subentryCount = 0,
+    numSponsoring = 0,
+    numSponsored = 0,
+    sellingLiabilities = "0",
+  } = opts;
+
+  const raw = parseXlmBalance(rawBalance);
+  const liabilities = parseXlmBalance(sellingLiabilities);
+  const reserveUnits = 2 + subentryCount + numSponsoring - numSponsored;
+  const reserve = baseReserve * Math.max(0, reserveUnits);
+
+  const spendable = raw - reserve - liabilities;
+  return Math.max(0, spendable).toFixed(7);
+}
+
 export interface ReadinessOptions {
   minimumBalance?: number;
   /**
@@ -23,6 +61,11 @@ export interface ReadinessOptions {
    * not ready. Defaults to `true` for callers that do not track authorization.
    */
   authorized?: boolean;
+  /**
+   * Spendable XLM balance (raw balance minus reserve and liabilities). When
+   * provided, this is used for the reserve check instead of the raw balance.
+   */
+  spendableBalance?: string;
 }
 
 export function computeReadiness(
@@ -31,8 +74,10 @@ export function computeReadiness(
   xlm_balance: string,
   options: ReadinessOptions = {}
 ): ReadinessStatus {
-  const { minimumBalance = MIN_XLM_BALANCE, authorized = true } = options;
-  const balance = parseXlmBalance(xlm_balance);
+  const { minimumBalance = MIN_XLM_BALANCE, authorized = true, spendableBalance } = options;
+  const balance = parseXlmBalance(
+    spendableBalance !== undefined ? spendableBalance : xlm_balance
+  );
 
   // A present-but-unauthorized trustline still fails payments.
   if (funded && trustline && !authorized) return "not_ready";
@@ -59,18 +104,23 @@ export function buildCheckResult(
   trustline: boolean,
   xlm_balance: string,
   errors: string[] = [],
-  trustlineAuthorized: boolean = trustline
+  trustlineAuthorized: boolean = trustline,
+  spendableXlmBalance?: string
 ): HorizonCheckResult {
   const balance = String(xlm_balance ?? "0");
+  const spendableBalance =
+    spendableXlmBalance !== undefined ? String(spendableXlmBalance) : balance;
   return {
     funded,
     trustline,
     trustline_authorized: trustlineAuthorized,
     verified: computeVerified(funded, trustline, trustlineAuthorized),
     xlm_balance: balance,
+    spendable_xlm_balance: spendableBalance,
     errors,
     readiness: computeReadiness(funded, trustline, balance, {
       authorized: trustlineAuthorized,
+      spendableBalance,
     }),
   };
 }

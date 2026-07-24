@@ -7,6 +7,7 @@ import { DEFAULT_ASSET, DEFAULT_HORIZON_URL } from "@/lib/constants";
 import {
   buildCheckResult,
   buildNotFoundCheckResult,
+  computeSpendableXlmBalance,
   getHorizonErrorMessage,
   isAccountNotFoundError,
 } from "@/lib/readiness";
@@ -15,9 +16,21 @@ import {
   isValidStellarAddress,
   normalizeStellarAddress,
 } from "@/lib/stellar";
+import { CircuitBreaker, CircuitBreakerOpenError } from "@/lib/circuit-breaker";
 import type { HorizonCheckResult } from "@/types";
 
 type AccountBalance = Horizon.HorizonApi.BalanceLine;
+
+/**
+ * `num_sponsoring`/`num_sponsored` are present on every Horizon account
+ * response and copied onto `AccountResponse` at runtime, but the SDK's
+ * `AccountResponse` class type only declares `subentry_count`. Narrow cast
+ * to read them without pulling in the full `ServerApi.AccountRecord` shape.
+ */
+type AccountSponsorshipFields = {
+  num_sponsoring: number;
+  num_sponsored: number;
+};
 
 function getHorizonServer(): Horizon.Server {
   const url =
@@ -25,6 +38,23 @@ function getHorizonServer(): Horizon.Server {
   return new Horizon.Server(url);
 }
 
+const horizonCircuitBreaker = new CircuitBreaker();
+
+export function getHorizonCircuitBreakerState(): string {
+  return horizonCircuitBreaker.getState();
+}
+
+export function getHorizonCircuitBreakerMetrics(): ReturnType<
+  typeof horizonCircuitBreaker.getMetrics
+> {
+  return horizonCircuitBreaker.getMetrics();
+}
+
+async function loadAccountFromHorizon(
+  address: string
+): Promise<Horizon.ServerApi.AccountRecord> {
+  const server = getHorizonServer();
+  return server.loadAccount(address);
 /** True when the balance line is a trustline for the requested asset. */
 function isMatchingTrustline(
   balance: AccountBalance,
@@ -83,6 +113,24 @@ export async function checkStellarAddress(
     ]);
   }
 
+  const errors: string[] = [];
+
+  try {
+    const account = await horizonCircuitBreaker.call(() =>
+      loadAccountFromHorizon(trimmed)
+    );
+    const xlmBalance =
+      account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+
+    const trustline = account.balances.some((balance) => {
+      if (balance.asset_type === "native") return false;
+      if (balance.asset_type === "liquidity_pool_shares") return false;
+      return (
+        "asset_code" in balance &&
+        balance.asset_code === assetCode &&
+        "asset_issuer" in balance &&
+        balance.asset_issuer === assetIssuer
+      );
   const cacheKey = buildCacheKey("horizon", trimmed, assetCode, assetIssuer);
   if (useCache) {
     const cached = verificationCache.get(cacheKey) as HorizonCheckResult | null;
@@ -99,8 +147,24 @@ export async function checkStellarAddress(
         !isAccountNotFoundError(getHorizonErrorMessage(error)),
     });
 
-    const xlmBalance =
-      account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+    const nativeBalance = account.balances.find(
+      (b) => b.asset_type === "native"
+    );
+    const xlmBalance = nativeBalance?.balance ?? "0";
+    const sellingLiabilities =
+      (nativeBalance && "selling_liabilities" in nativeBalance
+        ? nativeBalance.selling_liabilities
+        : undefined) ?? "0";
+
+    const { num_sponsoring, num_sponsored } =
+      account as unknown as AccountSponsorshipFields;
+
+    const spendableXlmBalance = computeSpendableXlmBalance(xlmBalance, {
+      subentryCount: account.subentry_count,
+      numSponsoring: num_sponsoring,
+      numSponsored: num_sponsored,
+      sellingLiabilities,
+    });
 
     const trustlineBalance = account.balances.find((balance) =>
       isMatchingTrustline(balance, assetCode, assetIssuer)
@@ -113,12 +177,19 @@ export async function checkStellarAddress(
       trustline,
       xlmBalance,
       [],
-      trustlineAuthorized
+      trustlineAuthorized,
+      spendableXlmBalance
     );
 
     if (useCache) verificationCache.set(cacheKey, result);
     return result;
   } catch (error) {
+    if (error instanceof CircuitBreakerOpenError) {
+      return buildCheckResult(false, false, "0", [
+        "Horizon is temporarily unavailable. Please try again later.",
+      ]);
+    }
+
     const message = getHorizonErrorMessage(error);
 
     if (isAccountNotFoundError(message)) {
