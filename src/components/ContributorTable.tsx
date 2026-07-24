@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowUpDown, Download } from "lucide-react";
+import { ArrowUpDown, Download, Loader2, RefreshCw } from "lucide-react";
 
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { Button } from "@/components/ui/button";
 import {
   filterContributors,
@@ -23,12 +24,18 @@ type SortKey = ContributorSortKey;
 interface ContributorTableProps {
   contributors: ContributorRow[];
   onExport?: () => void;
+  /** Re-check a single contributor via Horizon (maintainer action). */
+  onRecheck?: (id: string) => void;
+  /** Id of the contributor currently being re-checked, if any. */
+  recheckingId?: string | null;
   className?: string;
 }
 
 export function ContributorTable({
   contributors,
   onExport,
+  onRecheck,
+  recheckingId,
   className,
 }: ContributorTableProps) {
   const [filter, setFilter] = useState<FilterOption>("all");
@@ -111,6 +118,7 @@ export function ContributorTable({
               </th>
               <th className="px-4 py-3 font-medium">Stellar address</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium">Verified</th>
               <th className="px-4 py-3 font-medium">
                 <button
                   type="button"
@@ -131,13 +139,16 @@ export function ContributorTable({
                   <ArrowUpDown className="h-3.5 w-3.5" />
                 </button>
               </th>
+              {onRecheck && (
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={onRecheck ? 7 : 6}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No contributors match this filter.
@@ -156,10 +167,31 @@ export function ContributorTable({
                   <td className="px-4 py-3">
                     <TrustlineStatusBadge status={row.readiness} />
                   </td>
+                  <td className="px-4 py-3">
+                    <VerifiedBadge verified={row.verified} />
+                  </td>
                   <td className="px-4 py-3">{formatXlmBalance(row.xlmBalance)}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatRelativeTime(row.lastCheckedAt)}
                   </td>
+                  {onRecheck && (
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onRecheck(row.id)}
+                        disabled={recheckingId === row.id}
+                        title="Re-check this contributor via Horizon"
+                      >
+                        {recheckingId === row.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        Re-check
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -186,6 +218,8 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     "readiness",
     "funded",
     "trustline",
+    "trustline_authorized",
+    "verified",
     "xlm_balance",
     "last_checked_at",
   ];
@@ -196,6 +230,8 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     row.readiness,
     row.funded,
     row.trustlineReady,
+    row.trustlineAuthorized,
+    row.verified,
     row.xlmBalance,
     row.lastCheckedAt ?? "",
   ]);

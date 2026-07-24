@@ -74,6 +74,8 @@ flowchart TB
 - Provider: GitHub with scopes `read:user`, `user:email`, `read:org`
 - Session strategy: **JWT** (no server-side session table required at runtime)
 - On sign-in, user record is upserted in PostgreSQL with `githubId`, `githubUsername`, and `accessToken`
+- The GitHub access token is **encrypted at rest** (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`) before being written — see [`src/lib/token-crypto.ts`](../src/lib/token-crypto.ts) — and every encrypt/decrypt attempt is recorded in `TokenAuditLog` via [`src/lib/token-audit.ts`](../src/lib/token-audit.ts)
+- The raw access token is **never** placed on the JWT or session object, so it is never sent to the browser; server code that needs it calls `getDecryptedGithubAccessToken(userId)` in `src/lib/auth.ts`
 
 ### Route protection (`src/middleware.ts`)
 
@@ -100,13 +102,20 @@ See `prisma/schema.prisma`.
 User
 ├── githubId (unique)
 ├── githubUsername (unique)
-├── accessToken
-└── registration → Registration (1:1)
+├── accessToken (encrypted at rest — AES-256-GCM ciphertext, never plaintext)
+├── registration → Registration (1:1)
+└── auditLogs → TokenAuditLog (1:many)
 
 Registration
 ├── stellarAddress (unique)
 ├── funded, trustlineReady, xlmBalance
 └── lastCheckedAt
+
+TokenAuditLog
+├── userId
+├── action (token_encrypted_at_signin | token_encryption_skipped | token_decrypted | token_decrypt_failed)
+├── success
+└── createdAt
 ```
 
 NextAuth adapter models (`Account`, `Session`, `VerificationToken`) are included for future database-session support but JWT is used by default.
@@ -203,6 +212,18 @@ Key components:
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps `server.loadAccount()` with a CLOSED/OPEN/HALF_OPEN state machine. Fast-fails after 5 consecutive errors, recovers after a configurable timeout (default 30s). Prevents cascading failures during Horizon outages and protects batch re-check at 100+ contributor scale.
 - **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If data is older than the configured threshold (default 24h), the maintainer dashboard shows a warning banner and requires confirmation, preventing payout failures from stale address data.
 - **Address uniqueness** — prevents duplicate payout mappings
+
+---
+
+## Action lookup readiness API
+
+`GET /api/actions/lookup?address=G...` (`src/app/api/actions/lookup/route.ts`) wraps the same Horizon check used by `/api/check`, but as a cacheable `GET` that also computes a `nextAction` hint (`fund_account`, `add_trustline`, `increase_reserve`, `none`) via [`src/lib/action-lookup.ts`](../src/lib/action-lookup.ts). Results are cached for 30s per `address:asset_code:asset_issuer` key in `verificationCache` (`src/lib/cache.ts`) to absorb bursts against Horizon rate limits. The registration wizard (`AddressInput`) uses the same pure `computeNextAction()` helper to show contributors what to do next.
+
+---
+
+## Soroban event timeline
+
+The maintainer dashboard's **Soroban event timeline** panel (`src/components/SorobanEventTimeline.tsx`) shows recent contract events for `SOROBAN_CONTRACT_ID`, fetched server-side via `getSorobanEventTimeline()` (`src/lib/soroban.ts`) using `stellar-sdk`'s Soroban RPC client (`SOROBAN_RPC_URL`, default `soroban-testnet.stellar.org`). Exposed through `GET /api/soroban/events` (maintainer-only). RPC outages, rate limits, or a missing `SOROBAN_CONTRACT_ID` never throw — they surface as an `errors` array the panel renders inline, with an empty event list.
 
 ---
 

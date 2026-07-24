@@ -14,12 +14,27 @@ model User {
   name            String?
   email           String?
   image           String?
+  /// Encrypted at rest (AES-256-GCM, see src/lib/token-crypto.ts). Never plaintext.
   accessToken     String?
   accounts        Account[]
   sessions        Session[]
   registration    Registration?
+  auditLogs       TokenAuditLog[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+}
+
+model TokenAuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  success   Boolean  @default(true)
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Registration {
@@ -28,6 +43,7 @@ model Registration {
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   stellarAddress String    @unique
   trustlineReady Boolean   @default(false)
+  trustlineAuthorized Boolean @default(false)
   funded         Boolean   @default(false)
   xlmBalance     String    @default("0")
   lastCheckedAt  DateTime?
@@ -36,6 +52,20 @@ model Registration {
 
   @@index([trustlineReady])
   @@index([lastCheckedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorLogin String?
+  action     String
+  targetId   String?
+  targetLabel String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
 }
 
 model Account {
