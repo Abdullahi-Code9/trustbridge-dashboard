@@ -2,6 +2,7 @@ import "server-only";
 
 import { Horizon } from "stellar-sdk";
 
+import { buildCacheKey, verificationCache } from "@/lib/cache";
 import { DEFAULT_ASSET, DEFAULT_HORIZON_URL } from "@/lib/constants";
 import {
   buildCheckResult,
@@ -9,11 +10,14 @@ import {
   getHorizonErrorMessage,
   isAccountNotFoundError,
 } from "@/lib/readiness";
+import { withRetry } from "@/lib/retry";
 import {
   isValidStellarAddress,
   normalizeStellarAddress,
 } from "@/lib/stellar";
 import type { HorizonCheckResult } from "@/types";
+
+type AccountBalance = Horizon.HorizonApi.BalanceLine;
 
 function getHorizonServer(): Horizon.Server {
   const url =
@@ -21,11 +25,52 @@ function getHorizonServer(): Horizon.Server {
   return new Horizon.Server(url);
 }
 
+/** True when the balance line is a trustline for the requested asset. */
+function isMatchingTrustline(
+  balance: AccountBalance,
+  assetCode: string,
+  assetIssuer: string
+): boolean {
+  if (balance.asset_type === "native") return false;
+  if (balance.asset_type === "liquidity_pool_shares") return false;
+  return (
+    "asset_code" in balance &&
+    balance.asset_code === assetCode &&
+    "asset_issuer" in balance &&
+    balance.asset_issuer === assetIssuer
+  );
+}
+
+/**
+ * Whether a matched trustline is authorized by the asset issuer.
+ * Horizon exposes `is_authorized` on asset balance lines. Assets that do not
+ * require authorization omit or set it true, so a missing flag is treated as
+ * authorized to avoid false negatives.
+ */
+export function isTrustlineAuthorized(
+  balance: AccountBalance | undefined
+): boolean {
+  if (!balance) return false;
+  if ("is_authorized" in balance && typeof balance.is_authorized === "boolean") {
+    return balance.is_authorized;
+  }
+  return true;
+}
+
+export interface CheckOptions {
+  /** Read/write the short-lived verification cache. Defaults to true. */
+  useCache?: boolean;
+  /** Number of Horizon attempts on transient failures. Defaults to 3. */
+  retries?: number;
+}
+
 export async function checkStellarAddress(
   address: string,
   assetCode: string = DEFAULT_ASSET.code,
-  assetIssuer: string = DEFAULT_ASSET.issuer
+  assetIssuer: string = DEFAULT_ASSET.issuer,
+  options: CheckOptions = {}
 ): Promise<HorizonCheckResult> {
+  const { useCache = true, retries = 3 } = options;
   const trimmed = normalizeStellarAddress(address);
 
   if (!trimmed) {
@@ -38,35 +83,51 @@ export async function checkStellarAddress(
     ]);
   }
 
+  const cacheKey = buildCacheKey("horizon", trimmed, assetCode, assetIssuer);
+  if (useCache) {
+    const cached = verificationCache.get(cacheKey) as HorizonCheckResult | null;
+    if (cached) return cached;
+  }
+
   const server = getHorizonServer();
-  const errors: string[] = [];
 
   try {
-    const account = await server.loadAccount(trimmed);
-    const xlmBalance =
-      account.balances.find((b) => b.asset_type === "native")?.balance ??
-      "0";
-
-    const trustline = account.balances.some((balance) => {
-      if (balance.asset_type === "native") return false;
-      if (balance.asset_type === "liquidity_pool_shares") return false;
-      return (
-        "asset_code" in balance &&
-        balance.asset_code === assetCode &&
-        "asset_issuer" in balance &&
-        balance.asset_issuer === assetIssuer
-      );
+    const account = await withRetry(() => server.loadAccount(trimmed), {
+      attempts: retries,
+      // A missing account (404) will never succeed — fail fast instead of retrying.
+      shouldRetry: (error) =>
+        !isAccountNotFoundError(getHorizonErrorMessage(error)),
     });
 
-    return buildCheckResult(true, trustline, xlmBalance, errors);
+    const xlmBalance =
+      account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+
+    const trustlineBalance = account.balances.find((balance) =>
+      isMatchingTrustline(balance, assetCode, assetIssuer)
+    );
+    const trustline = Boolean(trustlineBalance);
+    const trustlineAuthorized = isTrustlineAuthorized(trustlineBalance);
+
+    const result = buildCheckResult(
+      true,
+      trustline,
+      xlmBalance,
+      [],
+      trustlineAuthorized
+    );
+
+    if (useCache) verificationCache.set(cacheKey, result);
+    return result;
   } catch (error) {
     const message = getHorizonErrorMessage(error);
 
     if (isAccountNotFoundError(message)) {
-      return buildNotFoundCheckResult();
+      const result = buildNotFoundCheckResult();
+      if (useCache) verificationCache.set(cacheKey, result);
+      return result;
     }
 
-    errors.push(`Horizon error: ${message}`);
-    return buildCheckResult(false, false, "0", errors);
+    // Transient errors are not cached so a later retry can succeed.
+    return buildCheckResult(false, false, "0", [`Horizon error: ${message}`]);
   }
 }

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { computeNextAction, WIZARD_ACTION_COPY } from "@/lib/action-lookup";
 import { cn } from "@/lib/utils";
 import type { HorizonCheckResult } from "@/types";
 
@@ -50,6 +51,8 @@ export function AddressInput({
       setResult({
         funded: false,
         trustline: false,
+        trustline_authorized: false,
+        verified: false,
         xlm_balance: "0",
         errors: ["Unable to reach validation service"],
         readiness: "not_ready",
@@ -100,6 +103,16 @@ export function AddressInput({
               <dd className="font-medium">{result.trustline ? "Yes" : "No"}</dd>
             </div>
             <div>
+              <dt className="text-muted-foreground">Authorized</dt>
+              <dd className="font-medium">
+                {result.trustline
+                  ? result.trustline_authorized
+                    ? "Yes"
+                    : "No (issuer authorization pending)"
+                  : "—"}
+              </dd>
+            </div>
+            <div>
               <dt className="text-muted-foreground">XLM balance</dt>
               <dd className="font-medium">{result.xlm_balance} XLM</dd>
             </div>
@@ -111,6 +124,9 @@ export function AddressInput({
               ))}
             </ul>
           )}
+          <p className="text-sm text-muted-foreground">
+            {WIZARD_ACTION_COPY[computeNextAction(result)]}
+          </p>
         </div>
       )}
     </div>

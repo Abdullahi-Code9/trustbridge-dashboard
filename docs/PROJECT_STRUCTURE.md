@@ -12,7 +12,8 @@ Directory layout and responsibilities for TrustBridge Dashboard.
 trustbridge-dashboard/
 ├── docs/                 # Project documentation (you are here)
 ├── prisma/
-│   └── schema.prisma     # Database schema (User, Registration, NextAuth models)
+│   ├── schema.prisma     # Database schema (User, Registration, TokenAuditLog, NextAuth models)
+│   └── migrations/       # Prisma migration history
 ├── src/
 │   ├── app/              # Next.js App Router pages & API routes
 │   ├── components/       # React components
@@ -40,6 +41,8 @@ trustbridge-dashboard/
 | `/api/register` | Route handler | `app/api/register/route.ts` |
 | `/api/contributors` | Route handler | `app/api/contributors/route.ts` |
 | `/api/stats` | Route handler | `app/api/stats/route.ts` |
+| `/api/actions/lookup` | Route handler | `app/api/actions/lookup/route.ts` |
+| `/api/soroban/events` | Route handler | `app/api/soroban/events/route.ts` |
 
 Global styles: `app/globals.css`  
 Root layout: `app/layout.tsx`
@@ -61,6 +64,7 @@ components/
 │   └── GitHubIcon.tsx
 ├── AddressInput.tsx         # Debounced Horizon validation input
 ├── ContributorTable.tsx     # Maintainer table + CSV export
+├── SorobanEventTimeline.tsx # Maintainer Soroban event table + filters + CSV export
 ├── Header.tsx               # Nav, auth, theme toggle
 ├── Providers.tsx            # Session, React Query, theme providers
 ├── TrustlineGuidancePanel.tsx
@@ -74,10 +78,15 @@ components/
 
 | File | Purpose |
 |------|---------|
-| `auth.ts` | NextAuth config, GitHub OAuth, maintainer org check |
+| `auth.ts` | NextAuth config, GitHub OAuth, maintainer org check, encrypted token storage |
+| `token-crypto.ts` | AES-256-GCM encrypt/decrypt for tokens at rest |
+| `token-audit.ts` | Best-effort audit trail for token encrypt/decrypt events |
 | `constants.ts` | Horizon URL, default asset, external links |
 | `horizon.ts` | Stellar Horizon account/trustline queries |
 | `stellar.ts` | Address validation, readiness computation |
+| `action-lookup.ts` | Wizard `nextAction` guidance from a Horizon check result |
+| `soroban.ts` | Soroban RPC event timeline fetch (server-only) |
+| `soroban-events.ts` | Pure filter/sort helpers for the event timeline panel |
 | `prisma.ts` | Prisma client singleton |
 | `registrations.ts` | Stats, contributor list, batch refresh |
 | `utils.ts` | `cn()` helper, date formatting |
@@ -116,6 +125,7 @@ All docs link back to the [README](../README.md).
 | `build` | `prisma generate && next build` | Production build |
 | `start` | `next start` | Run production server |
 | `lint` | `next lint` | ESLint |
+| `test` | `vitest run` | Unit tests |
 | `db:push` | `prisma db push` | Sync schema to DB |
 | `db:migrate` | `prisma migrate dev` | Create migration |
 | `db:studio` | `prisma studio` | DB GUI |
