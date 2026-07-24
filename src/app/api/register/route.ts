@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAuditLog } from "@/lib/audit";
 import { authOptions } from "@/lib/auth";
 import { DEFAULT_ASSET } from "@/lib/constants";
 import { checkStellarAddress } from "@/lib/horizon";
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
         stellarAddress,
         funded: horizonResult.funded,
         trustlineReady: horizonResult.trustline,
+        trustlineAuthorized: horizonResult.trustline_authorized,
         xlmBalance: horizonResult.xlm_balance,
         lastCheckedAt: new Date(),
       },
@@ -66,9 +68,19 @@ export async function POST(request: NextRequest) {
         stellarAddress,
         funded: horizonResult.funded,
         trustlineReady: horizonResult.trustline,
+        trustlineAuthorized: horizonResult.trustline_authorized,
         xlmBalance: horizonResult.xlm_balance,
         lastCheckedAt: new Date(),
       },
+    });
+
+    await recordAuditLog({
+      action: existing ? "registration.update" : "registration.create",
+      actorId: session.user.id,
+      actorLogin: session.user.githubUsername ?? null,
+      targetId: registration.id,
+      targetLabel: registration.stellarAddress,
+      metadata: { readiness: horizonResult.readiness },
     });
 
     return NextResponse.json({
@@ -79,6 +91,8 @@ export async function POST(request: NextRequest) {
         readiness: horizonResult.readiness,
         funded: registration.funded,
         trustline: registration.trustlineReady,
+        trustline_authorized: registration.trustlineAuthorized,
+        verified: horizonResult.verified,
         xlm_balance: registration.xlmBalance,
       },
     });

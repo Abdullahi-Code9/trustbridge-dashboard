@@ -50,6 +50,26 @@ export default function DashboardPage() {
     },
   });
 
+  const recheckOneMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/contributors/${id}`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Re-check failed");
+      return (await response.json()) as { contributor: ContributorRow };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<ContributorsResponse>(
+        ["contributors"],
+        (prev) => ({
+          contributors: (prev?.contributors ?? []).map((row) =>
+            row.id === data.contributor.id ? data.contributor : row
+          ),
+        })
+      );
+    },
+  });
+
   const contributors = contributorsQuery.data?.contributors ?? [];
   const readyCount = countReadyContributors(contributors);
 
@@ -104,6 +124,12 @@ export default function DashboardPage() {
         <ContributorTable
           contributors={contributors}
           onExport={() => exportContributorsCsv(contributors)}
+          onRecheck={(id) => recheckOneMutation.mutate(id)}
+          recheckingId={
+            recheckOneMutation.isPending
+              ? (recheckOneMutation.variables ?? null)
+              : null
+          }
         />
       )}
     </div>

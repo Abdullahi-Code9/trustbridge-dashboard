@@ -50,6 +50,8 @@ export function AddressInput({
       setResult({
         funded: false,
         trustline: false,
+        trustline_authorized: false,
+        verified: false,
         xlm_balance: "0",
         errors: ["Unable to reach validation service"],
         readiness: "not_ready",
@@ -98,6 +100,16 @@ export function AddressInput({
             <div>
               <dt className="text-muted-foreground">USDC trustline</dt>
               <dd className="font-medium">{result.trustline ? "Yes" : "No"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Authorized</dt>
+              <dd className="font-medium">
+                {result.trustline
+                  ? result.trustline_authorized
+                    ? "Yes"
+                    : "No (issuer authorization pending)"
+                  : "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">XLM balance</dt>

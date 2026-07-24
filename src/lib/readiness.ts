@@ -15,35 +15,63 @@ export function parseXlmBalance(xlmBalance: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export interface ReadinessOptions {
+  minimumBalance?: number;
+  /**
+   * Whether the trustline is authorized by the asset issuer. A trustline that
+   * is present but unauthorized cannot receive the asset, so it is treated as
+   * not ready. Defaults to `true` for callers that do not track authorization.
+   */
+  authorized?: boolean;
+}
+
 export function computeReadiness(
   funded: boolean,
   trustline: boolean,
   xlm_balance: string,
-  minimumBalance = MIN_XLM_BALANCE
+  options: ReadinessOptions = {}
 ): ReadinessStatus {
+  const { minimumBalance = MIN_XLM_BALANCE, authorized = true } = options;
   const balance = parseXlmBalance(xlm_balance);
+
+  // A present-but-unauthorized trustline still fails payments.
+  if (funded && trustline && !authorized) return "not_ready";
 
   if (funded && trustline && balance < minimumBalance) {
     return "low_reserve";
   }
   if (funded && trustline) return "ready";
-  if (funded && !trustline) return "not_ready";
 
   return "not_ready";
+}
+
+/** On-chain verified: funded, trustline present, and issuer-authorized. */
+export function computeVerified(
+  funded: boolean,
+  trustline: boolean,
+  authorized: boolean
+): boolean {
+  return funded && trustline && authorized;
 }
 
 export function buildCheckResult(
   funded: boolean,
   trustline: boolean,
   xlm_balance: string,
-  errors: string[] = []
+  errors: string[] = [],
+  trustlineAuthorized: boolean = trustline
 ): HorizonCheckResult {
+  const balance = String(xlm_balance ?? "0");
   return {
     funded,
     trustline,
-    xlm_balance: String(xlm_balance ?? "0"),
+    trustline_authorized: trustlineAuthorized,
+    verified: computeVerified(funded, trustline, trustlineAuthorized),
+    xlm_balance: balance,
     errors,
-    readiness: computeReadiness(funded, trustline, String(xlm_balance ?? "0")),
+    readiness: computeReadiness(funded, trustline, balance, {
+      authorized: trustlineAuthorized,
+    }),
   };
 }
 
