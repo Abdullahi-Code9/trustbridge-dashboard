@@ -7,6 +7,7 @@ import {
   ContributorTable,
   exportContributorsCsv,
 } from "@/components/ContributorTable";
+import { SorobanEventTimeline } from "@/components/SorobanEventTimeline";
 import { WaveReadinessBar } from "@/components/WaveReadinessBar";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { countReadyContributors } from "@/lib/contributors";
-import type { ContributorRow } from "@/types";
+import type { ContributorRow, SorobanEventTimelineResponse } from "@/types";
 
 interface ContributorsResponse {
   contributors: ContributorRow[];
@@ -50,23 +51,12 @@ export default function DashboardPage() {
     },
   });
 
-  const recheckOneMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/contributors/${id}`, {
-        method: "POST",
-      });
-      if (!response.ok) throw new Error("Re-check failed");
-      return (await response.json()) as { contributor: ContributorRow };
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData<ContributorsResponse>(
-        ["contributors"],
-        (prev) => ({
-          contributors: (prev?.contributors ?? []).map((row) =>
-            row.id === data.contributor.id ? data.contributor : row
-          ),
-        })
-      );
+  const sorobanQuery = useQuery({
+    queryKey: ["soroban-events"],
+    queryFn: async () => {
+      const response = await fetch("/api/soroban/events");
+      if (!response.ok) throw new Error("Failed to load Soroban events");
+      return (await response.json()) as SorobanEventTimelineResponse;
     },
   });
 
@@ -132,6 +122,32 @@ export default function DashboardPage() {
           }
         />
       )}
+
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>Soroban event timeline</CardTitle>
+          <CardDescription>
+            Recent on-chain events for the configured registry contract
+            (<code>SOROBAN_CONTRACT_ID</code>). Filter by event type and
+            export for auditing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {sorobanQuery.isLoading ? (
+            <div className="flex items-center justify-center py-20 text-muted-foreground">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Loading Soroban events...
+            </div>
+          ) : sorobanQuery.isError ? (
+            <p className="text-destructive">Failed to load Soroban events.</p>
+          ) : (
+            <SorobanEventTimeline
+              events={sorobanQuery.data?.events ?? []}
+              errors={sorobanQuery.data?.errors ?? []}
+            />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

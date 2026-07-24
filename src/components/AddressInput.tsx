@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { computeNextAction, WIZARD_ACTION_COPY } from "@/lib/action-lookup";
 import { cn } from "@/lib/utils";
 import type { HorizonCheckResult } from "@/types";
 
@@ -123,6 +124,9 @@ export function AddressInput({
               ))}
             </ul>
           )}
+          <p className="text-sm text-muted-foreground">
+            {WIZARD_ACTION_COPY[computeNextAction(result)]}
+          </p>
         </div>
       )}
     </div>

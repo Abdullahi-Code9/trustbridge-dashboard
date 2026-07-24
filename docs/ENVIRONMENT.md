@@ -66,6 +66,18 @@ postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require
 
 Providers: local Postgres, Neon, Supabase, Vercel Postgres, Railway, etc.
 
+### `TOKEN_ENCRYPTION_KEY`
+
+Base64-encoded 32-byte key used to encrypt GitHub access tokens at rest (AES-256-GCM) before they are written to `User.accessToken`. See [`src/lib/token-crypto.ts`](../src/lib/token-crypto.ts).
+
+Generate:
+
+```bash
+openssl rand -base64 32
+```
+
+**Required.** If unset, invalid, or not exactly 32 bytes after base64 decoding, sign-in fails closed — no access token is stored (rather than falling back to plaintext) and a `token_encryption_skipped` row is written to `TokenAuditLog`.
+
 ---
 
 ## Stellar / Horizon (public)
@@ -109,9 +121,18 @@ Accounts below this threshold show **Low Reserve** even with a valid trustline.
 
 ### `SOROBAN_CONTRACT_ID`
 
-Soroban contract ID for future on-chain registry integration.
+Soroban contract ID for future on-chain registry integration, and the contract the maintainer dashboard's **Soroban event timeline** panel reads events for.
 
-When unset, registrations are stored in PostgreSQL only. See [Architecture — Soroban](./ARCHITECTURE.md#future-soroban-registry).
+When unset, registrations are stored in PostgreSQL only and the event timeline panel renders an empty state explaining that configuration is missing. See [Architecture — Soroban](./ARCHITECTURE.md#future-soroban-registry).
+
+### `SOROBAN_RPC_URL`
+
+Soroban RPC endpoint used to fetch contract events for the timeline panel. Defaults to `https://soroban-testnet.stellar.org` when unset.
+
+| Network | URL |
+|---------|-----|
+| Mainnet | `https://mainnet.sorobanrpc.com` |
+| Testnet | `https://soroban-testnet.stellar.org` |
 
 ---
 
