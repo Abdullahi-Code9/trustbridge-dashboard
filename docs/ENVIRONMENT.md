@@ -121,9 +121,9 @@ Accounts below this threshold show **Low Reserve** even with a valid trustline.
 
 ### `SOROBAN_CONTRACT_ID`
 
-Soroban contract ID for future on-chain registry integration, and the contract the maintainer dashboard's **Soroban event timeline** panel reads events for.
+Soroban contract ID the maintainer dashboard's **Soroban event timeline** panel reads events for. Registrations are not yet mirrored to this contract — see the write-through design note below.
 
-When unset, registrations are stored in PostgreSQL only and the event timeline panel renders an empty state explaining that configuration is missing. See [Architecture — Soroban](./ARCHITECTURE.md#future-soroban-registry).
+When unset, registrations are stored in PostgreSQL only and the event timeline panel renders an empty state explaining that configuration is missing. See [Architecture — Soroban register write-through](./ARCHITECTURE.md#soroban-register-write-through) for the read-vs-write-through breakdown.
 
 ### `SOROBAN_RPC_URL`
 

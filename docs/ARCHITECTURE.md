@@ -227,9 +227,39 @@ The maintainer dashboard's **Soroban event timeline** panel (`src/components/Sor
 
 ---
 
-## Future: Soroban registry
+## Soroban register write-through
 
-When `SOROBAN_CONTRACT_ID` is set, registrations can be mirrored to a Soroban smart contract for trustless, on-chain contributor registry. The PostgreSQL layer remains the query-optimized source for dashboard aggregations; contract writes would happen in `/api/register` post-save.
+This section covers the full lifecycle of Soroban integration: the read path that ships today, and the write-through path that is designed but intentionally **not yet implemented**.
+
+### Read path (implemented today)
+
+- `getSorobanEventTimeline()` (`src/lib/soroban.ts`) opens a `stellar-sdk` `rpc.Server` against `SOROBAN_RPC_URL` (default `soroban-testnet.stellar.org`), reads the latest ledger, and fetches recent events for `SOROBAN_CONTRACT_ID` over a fixed ~7-hour ledger window.
+- Exposed via `GET /api/soroban/events` (`src/app/api/soroban/events/route.ts`), guarded by `isMaintainer` — same guard pattern as `/api/contributors`.
+- **Never throws.** A missing `SOROBAN_CONTRACT_ID` short-circuits before any RPC call and returns `{ events: [], latestLedger: 0, errors: ["SOROBAN_CONTRACT_ID is not configured"] }`. An RPC failure (outage, rate limit, timeout) is caught and returns `{ events: [], latestLedger: 0, errors: ["Soroban RPC error: <message>"] }`. Either way the API responds `200` with an `errors` array the `SorobanEventTimeline` panel renders inline — the maintainer dashboard degrades gracefully instead of failing.
+- No caching layer sits in front of this call today (unlike `/api/actions/lookup`, which caches Horizon reads for 30s in `src/lib/cache.ts`); each request re-queries the RPC endpoint. A cache would be a reasonable addition if this panel sees high-frequency polling.
+- Unit coverage: `src/lib/soroban.test.ts` (success, missing config, RPC failure) and `src/app/api/soroban/events/route.test.ts` (maintainer guard: 403 for anonymous/non-maintainer, 200 with the timeline payload for a maintainer).
+
+### Write-through path (design only — not implemented)
+
+No code path writes to a Soroban contract today. `/api/register` (`src/app/api/register/route.ts`) only performs a Horizon check and a Prisma upsert. This section documents the intended design so a future contributor can implement it consistently and safely:
+
+- **PostgreSQL stays the source of truth.** A Soroban write is a mirror, not a replacement — dashboard reads, Wave aggregation, and CSV export continue to query Postgres exclusively.
+- **Ordering:** the contract write would be attempted in `/api/register`'s `POST` handler **after** `prisma.registration.upsert()` resolves successfully — never before, and never in a way that blocks or gates the Postgres write.
+- **Best-effort and failure-isolated:** the write attempt must be wrapped so that a Soroban RPC outage, rate limit, or a missing `SOROBAN_CONTRACT_ID` can never fail the request or roll back the registration. The existing `getSorobanEventTimeline()` "never throw, return an `errors` array" convention is the model to follow — e.g. a `mirrorRegistrationToSoroban()` helper that returns a result/error object rather than throwing, called with its outcome logged (not surfaced as a request failure) and never `await`-blocking the HTTP response on-chain confirmation.
+- **Zero on-chain dependency for the core flow:** contributors must be able to register successfully with `SOROBAN_CONTRACT_ID` unset entirely, exactly as today.
+- **Where it would live:** a new `src/lib/soroban-register.ts` (or an addition to `src/lib/soroban.ts`) exporting the write helper, invoked from `/api/register`'s `POST` handler per the ordering above.
+
+### Edge cases
+
+| Case | Read path (today) | Write-through (design) |
+|------|--------------------|--------------------------|
+| RPC outage / timeout | Caught, `errors: ["Soroban RPC error: ..."]`, empty events, `200` response | Caught, logged, registration still succeeds |
+| Missing/invalid `SOROBAN_CONTRACT_ID` | Short-circuits before any RPC call, `errors: ["SOROBAN_CONTRACT_ID is not configured"]` | Write attempt skipped entirely; registration unaffected |
+| Rate limiting | Same as outage — surfaces in `errors`, no throw | Same as outage — best-effort, never blocks Postgres |
+
+### Out of scope for this iteration
+
+End-to-end/browser coverage (e.g. Playwright) for the event timeline panel and any future write-through flow is a deliberate follow-up, not a gap in this pass — this repo currently has no Playwright/e2e harness, and adding one is a separate infrastructure change (new CI browser setup) tracked independently of this documentation and unit/API test work.
 
 ---
 
