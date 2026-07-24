@@ -29,7 +29,7 @@
 | Audience | Capability |
 |----------|------------|
 | **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
 
 ### Readiness model
@@ -135,6 +135,8 @@ All docs are cross-linked from this README:
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
+| `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
+| `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 
 ### Middleware
 
@@ -151,13 +153,15 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=
+TOKEN_ENCRYPTION_KEY=  # required, openssl rand -base64 32 — encrypts stored access tokens
 GITHUB_MAINTAINER_ORG=
 DATABASE_URL=
 NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
 NEXT_PUBLIC_DEFAULT_ASSET_CODE=USDC
 NEXT_PUBLIC_DEFAULT_ASSET_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6
 NEXT_PUBLIC_MIN_XLM_BALANCE=1
-SOROBAN_CONTRACT_ID=   # optional, future on-chain registry
+SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
+SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
 ```
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.

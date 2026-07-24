@@ -72,6 +72,7 @@ GITHUB_CLIENT_ID=your_client_id
 GITHUB_CLIENT_SECRET=your_client_secret
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=   # run: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=   # run: openssl rand -base64 32
 GITHUB_MAINTAINER_ORG=your-github-org-slug
 DATABASE_URL=postgresql://...
 ```
