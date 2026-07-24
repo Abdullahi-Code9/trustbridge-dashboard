@@ -42,7 +42,8 @@ export type AuditAction =
   | "recheck.single"
   | "recheck.batch"
   | "registration.create"
-  | "registration.update";
+  | "registration.update"
+  | "network_config_mismatch_detected";
 
 export interface AuditLogEntry {
   id: string;
@@ -78,4 +79,16 @@ export interface SorobanEventTimelineResponse {
   events: SorobanEventRow[];
   latestLedger: number;
   errors: string[];
+}
+
+export type StellarNetwork = "mainnet" | "testnet" | "custom";
+
+export interface NetworkConfig {
+  horizonUrl: string;
+  horizonNetwork: StellarNetwork;
+  sorobanUrl: string;
+  sorobanNetwork: StellarNetwork;
+  sorobanContractConfigured: boolean;
+  mismatched: boolean;
+  warnings: string[];
 }

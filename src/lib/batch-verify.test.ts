@@ -10,7 +10,7 @@ import {
 
 function result(
   status: VerificationCheckResult["status"],
-  username = status
+  username: string = status
 ): VerificationCheckResult {
   return {
     username,

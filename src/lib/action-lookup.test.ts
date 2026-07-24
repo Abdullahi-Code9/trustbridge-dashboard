@@ -10,6 +10,8 @@ function result(overrides: Partial<HorizonCheckResult>): HorizonCheckResult {
   return {
     funded: false,
     trustline: false,
+    trustline_authorized: false,
+    verified: false,
     xlm_balance: "0",
     errors: [],
     readiness: "not_ready",
