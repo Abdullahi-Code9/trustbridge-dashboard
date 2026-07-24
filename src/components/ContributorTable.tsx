@@ -13,6 +13,7 @@ import {
   type ContributorSortKey,
 } from "@/lib/contributors";
 import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
+import { buildStalenessSummary } from "@/lib/stale-export";
 import { getRowAccent } from "@/lib/readiness";
 import { cn, formatGithubHandle, formatRelativeTime, formatXlmBalance, shortenAddress } from "@/lib/utils";
 import type { ContributorRow } from "@/types";
@@ -40,6 +41,11 @@ export function ContributorTable({
   const [filter, setFilter] = useState<FilterOption>("all");
   const [sortKey, setSortKey] = useState<SortKey>("githubUsername");
   const [sortAsc, setSortAsc] = useState(true);
+
+  const staleSummary = useMemo(
+    () => buildStalenessSummary(contributors),
+    [contributors]
+  );
 
   const filtered = useMemo(() => {
     const rows = filterContributors(contributors, filter);
@@ -77,12 +83,24 @@ export function ContributorTable({
           ))}
         </div>
         {onExport && (
-          <Button size="sm" variant="outline" onClick={onExport}>
+          <Button
+            size="sm"
+            variant={staleSummary.stale ? "destructive" : "outline"}
+            onClick={onExport}
+            title={staleSummary.warning}
+          >
             <Download className="h-4 w-4" />
-            Export CSV
+            {staleSummary.stale ? "Export CSV (stale)" : "Export CSV"}
           </Button>
         )}
       </div>
+
+      {staleSummary.stale && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <p className="font-medium">⚠️ Stale data detected</p>
+          <p className="mt-1">{staleSummary.warning}</p>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border">
         <table className="w-full min-w-[720px] text-sm">
@@ -184,7 +202,16 @@ export function ContributorTable({
   );
 }
 
-export function exportContributorsCsv(contributors: ContributorRow[]): void {
+export function exportContributorsCsv(contributors: ContributorRow[], force = false): boolean {
+  const summary = buildStalenessSummary(contributors);
+
+  if (summary.stale && !force) {
+    const confirmed = window.confirm(
+      `${summary.warning}\n\nDo you want to export anyway?`
+    );
+    if (!confirmed) return false;
+  }
+
   const headers = [
     "github_username",
     "stellar_address",
@@ -213,4 +240,5 @@ export function exportContributorsCsv(contributors: ContributorRow[]): void {
 
   const csv = buildCsv(headers, rows);
   downloadCsv(buildCsvFilename("trustbridge-wave"), csv);
+  return true;
 }

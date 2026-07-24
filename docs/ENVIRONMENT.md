@@ -95,6 +95,8 @@ Horizon API base URL.
 
 Must match the network your contributors use.
 
+> **Network consistency:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` (below) should point at the **same** Stellar network. The project's own defaults do not — Horizon defaults to mainnet while `SOROBAN_RPC_URL` defaults to testnet — so a maintainer who only sets one of the two can end up validating contributor funding against a different network than the one Soroban events are read from. The dashboard detects this: `GET /api/settings/network` (maintainer-only) and the "Network configuration" panel on `/dashboard` compare the resolved networks and show a warning banner when they mismatch, and a `network_config_mismatch_detected` entry is written to the audit log (visible via `GET /api/audit`) so the misconfiguration has a durable record. See [`src/lib/network-config.ts`](../src/lib/network-config.ts).
+
 ### `NEXT_PUBLIC_DEFAULT_ASSET_CODE`
 
 Asset code for trustline checks. Default: `USDC`
@@ -127,9 +129,9 @@ Every Stellar account locks up `baseReserve * (2 + subentry_count + num_sponsori
 
 ### `SOROBAN_CONTRACT_ID`
 
-Soroban contract ID for future on-chain registry integration, and the contract the maintainer dashboard's **Soroban event timeline** panel reads events for.
+Soroban contract ID the maintainer dashboard's **Soroban event timeline** panel reads events for. Registrations are not yet mirrored to this contract — see the write-through design note below.
 
-When unset, registrations are stored in PostgreSQL only and the event timeline panel renders an empty state explaining that configuration is missing. See [Architecture — Soroban](./ARCHITECTURE.md#future-soroban-registry).
+When unset, registrations are stored in PostgreSQL only and the event timeline panel renders an empty state explaining that configuration is missing. See [Architecture — Soroban register write-through](./ARCHITECTURE.md#soroban-register-write-through) for the read-vs-write-through breakdown.
 
 ### `SOROBAN_RPC_URL`
 
@@ -139,6 +141,8 @@ Soroban RPC endpoint used to fetch contract events for the timeline panel. Defau
 |---------|-----|
 | Mainnet | `https://mainnet.sorobanrpc.com` |
 | Testnet | `https://soroban-testnet.stellar.org` |
+
+**Keep this on the same network as `NEXT_PUBLIC_HORIZON_URL` above.** The default here is testnet while the default Horizon URL is mainnet — see the network consistency note above and [Architecture — network hardening](./ARCHITECTURE.md#network-hardening) for how the mismatch is surfaced.
 
 ---
 

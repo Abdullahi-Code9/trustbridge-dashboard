@@ -16,6 +16,7 @@ import {
   isValidStellarAddress,
   normalizeStellarAddress,
 } from "@/lib/stellar";
+import { CircuitBreaker, CircuitBreakerOpenError } from "@/lib/circuit-breaker";
 import type { HorizonCheckResult } from "@/types";
 
 type AccountBalance = Horizon.HorizonApi.BalanceLine;
@@ -37,6 +38,23 @@ function getHorizonServer(): Horizon.Server {
   return new Horizon.Server(url);
 }
 
+const horizonCircuitBreaker = new CircuitBreaker();
+
+export function getHorizonCircuitBreakerState(): string {
+  return horizonCircuitBreaker.getState();
+}
+
+export function getHorizonCircuitBreakerMetrics(): ReturnType<
+  typeof horizonCircuitBreaker.getMetrics
+> {
+  return horizonCircuitBreaker.getMetrics();
+}
+
+async function loadAccountFromHorizon(
+  address: string
+): Promise<Horizon.ServerApi.AccountRecord> {
+  const server = getHorizonServer();
+  return server.loadAccount(address);
 /** True when the balance line is a trustline for the requested asset. */
 function isMatchingTrustline(
   balance: AccountBalance,
@@ -95,6 +113,24 @@ export async function checkStellarAddress(
     ]);
   }
 
+  const errors: string[] = [];
+
+  try {
+    const account = await horizonCircuitBreaker.call(() =>
+      loadAccountFromHorizon(trimmed)
+    );
+    const xlmBalance =
+      account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+
+    const trustline = account.balances.some((balance) => {
+      if (balance.asset_type === "native") return false;
+      if (balance.asset_type === "liquidity_pool_shares") return false;
+      return (
+        "asset_code" in balance &&
+        balance.asset_code === assetCode &&
+        "asset_issuer" in balance &&
+        balance.asset_issuer === assetIssuer
+      );
   const cacheKey = buildCacheKey("horizon", trimmed, assetCode, assetIssuer);
   if (useCache) {
     const cached = verificationCache.get(cacheKey) as HorizonCheckResult | null;
@@ -148,6 +184,12 @@ export async function checkStellarAddress(
     if (useCache) verificationCache.set(cacheKey, result);
     return result;
   } catch (error) {
+    if (error instanceof CircuitBreakerOpenError) {
+      return buildCheckResult(false, false, "0", [
+        "Horizon is temporarily unavailable. Please try again later.",
+      ]);
+    }
+
     const message = getHorizonErrorMessage(error);
 
     if (isAccountNotFoundError(message)) {
