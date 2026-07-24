@@ -136,6 +136,10 @@ All docs are cross-linked from this README:
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
 
+### Resilience
+
+- **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
+
 ### Middleware
 
 `src/middleware.ts` protects `/register` (requires sign-in) and `/dashboard` (requires sign-in + `GITHUB_MAINTAINER_ORG` membership).
@@ -194,7 +198,8 @@ Quick flow:
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Commit with clear messages
-4. Open a pull request against `main`
+4. Run tests (`npm run test`)
+5. Open a pull request against `main`
 
 ---
 

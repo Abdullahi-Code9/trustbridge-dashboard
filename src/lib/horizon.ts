@@ -13,12 +13,32 @@ import {
   isValidStellarAddress,
   normalizeStellarAddress,
 } from "@/lib/stellar";
+import { CircuitBreaker, CircuitBreakerOpenError } from "@/lib/circuit-breaker";
 import type { HorizonCheckResult } from "@/types";
 
 function getHorizonServer(): Horizon.Server {
   const url =
     process.env.NEXT_PUBLIC_HORIZON_URL?.trim() || DEFAULT_HORIZON_URL;
   return new Horizon.Server(url);
+}
+
+const horizonCircuitBreaker = new CircuitBreaker();
+
+export function getHorizonCircuitBreakerState(): string {
+  return horizonCircuitBreaker.getState();
+}
+
+export function getHorizonCircuitBreakerMetrics(): ReturnType<
+  typeof horizonCircuitBreaker.getMetrics
+> {
+  return horizonCircuitBreaker.getMetrics();
+}
+
+async function loadAccountFromHorizon(
+  address: string
+): Promise<Horizon.ServerApi.AccountRecord> {
+  const server = getHorizonServer();
+  return server.loadAccount(address);
 }
 
 export async function checkStellarAddress(
@@ -38,14 +58,14 @@ export async function checkStellarAddress(
     ]);
   }
 
-  const server = getHorizonServer();
   const errors: string[] = [];
 
   try {
-    const account = await server.loadAccount(trimmed);
+    const account = await horizonCircuitBreaker.call(() =>
+      loadAccountFromHorizon(trimmed)
+    );
     const xlmBalance =
-      account.balances.find((b) => b.asset_type === "native")?.balance ??
-      "0";
+      account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
 
     const trustline = account.balances.some((balance) => {
       if (balance.asset_type === "native") return false;
@@ -60,6 +80,12 @@ export async function checkStellarAddress(
 
     return buildCheckResult(true, trustline, xlmBalance, errors);
   } catch (error) {
+    if (error instanceof CircuitBreakerOpenError) {
+      return buildCheckResult(false, false, "0", [
+        "Horizon is temporarily unavailable. Please try again later.",
+      ]);
+    }
+
     const message = getHorizonErrorMessage(error);
 
     if (isAccountNotFoundError(message)) {

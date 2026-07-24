@@ -200,6 +200,7 @@ Key components:
 - **Secrets server-side only** — `GITHUB_CLIENT_SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` never exposed to client
 - **Horizon calls server-side** — `/api/check` prevents CORS/rate-limit issues and keeps validation logic centralized
 - **Maintainer API guard** — `/api/contributors` verifies `isMaintainer` on every request
+- **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps `server.loadAccount()` with a CLOSED/OPEN/HALF_OPEN state machine. Fast-fails after 5 consecutive errors, recovers after a configurable timeout (default 30s). Prevents cascading failures during Horizon outages and protects batch re-check at 100+ contributor scale.
 - **Address uniqueness** — prevents duplicate payout mappings
 
 ---
