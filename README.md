@@ -205,7 +205,9 @@ openssl rand -base64 32
 
 Unit tests run on [Vitest](https://vitest.dev/) and cover the pure business logic
 (readiness/authorization rules, the Horizon retry helper, audit-log formatting,
-and batch verification):
+batch verification, and the Soroban event-timeline read path — including the
+`GET /api/soroban/events` maintainer guard, a missing `SOROBAN_CONTRACT_ID`,
+and simulated RPC outages/rate limits, all without a live network call):
 
 ```bash
 npm test          # run once
@@ -251,7 +253,17 @@ Quick flow:
 
 ## Optional: Soroban on-chain registry
 
-The scaffold stores registrations in PostgreSQL. Set `SOROBAN_CONTRACT_ID` when an on-chain Soroban registry is deployed — integration hooks can mirror writes to the contract (see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md#future-soroban-registry)).
+PostgreSQL is the source of truth for registrations. Setting `SOROBAN_CONTRACT_ID`
+(+ optionally `SOROBAN_RPC_URL`) today enables the **read-only** maintainer event
+timeline (`GET /api/soroban/events`), which fetches recent contract events and
+degrades gracefully — never failing the dashboard — on RPC outages, rate limits,
+or a missing contract ID.
+
+Mirroring registrations *to* a Soroban contract (write-through) is designed but
+**not yet implemented** — see
+[docs/ARCHITECTURE.md § Soroban register write-through](./docs/ARCHITECTURE.md#soroban-register-write-through)
+for the read-vs-write-through breakdown, the intended write design, and how each
+edge case (outage, missing config, rate limits) is or would be handled.
 
 ---
 
