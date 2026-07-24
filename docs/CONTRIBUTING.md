@@ -32,10 +32,11 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
    ```
 
 3. Make focused changes — one concern per PR
-4. Ensure the project builds:
+4. Ensure the project builds and tests pass:
 
    ```bash
    npm run lint
+   npm run test
    npm run build
    ```
 
@@ -48,7 +49,7 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
 - [ ] Issue linked (if applicable)
 - [ ] `.env.example` updated if new env vars added
 - [ ] Docs updated in `docs/` and linked from README
-- [ ] `npm run build` passes
+- [ ] `npm run lint`, `npm run test`, and `npm run build` pass
 - [ ] No secrets committed
 
 ### PR title format

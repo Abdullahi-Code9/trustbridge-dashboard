@@ -30,3 +30,22 @@ export interface DashboardStats {
   readyCount: number;
   readyPercent: number;
 }
+
+export type SorobanEventType = "contract" | "system" | "diagnostic";
+
+export interface SorobanEventRow {
+  id: string;
+  type: SorobanEventType;
+  ledger: number;
+  ledgerClosedAt: string;
+  contractId: string;
+  topic: string[];
+  value: string;
+  txHash: string;
+}
+
+export interface SorobanEventTimelineResponse {
+  events: SorobanEventRow[];
+  latestLedger: number;
+  errors: string[];
+}
