@@ -43,6 +43,7 @@ model Registration {
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   stellarAddress String    @unique
   trustlineReady Boolean   @default(false)
+  trustlineAuthorized Boolean @default(false)
   funded         Boolean   @default(false)
   xlmBalance     String    @default("0")
   lastCheckedAt  DateTime?
@@ -51,6 +52,20 @@ model Registration {
 
   @@index([trustlineReady])
   @@index([lastCheckedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorLogin String?
+  action     String
+  targetId   String?
+  targetLabel String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
 }
 
 model Account {

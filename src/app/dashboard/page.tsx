@@ -114,6 +114,12 @@ export default function DashboardPage() {
         <ContributorTable
           contributors={contributors}
           onExport={() => exportContributorsCsv(contributors)}
+          onRecheck={(id) => recheckOneMutation.mutate(id)}
+          recheckingId={
+            recheckOneMutation.isPending
+              ? (recheckOneMutation.variables ?? null)
+              : null
+          }
         />
       )}
 
