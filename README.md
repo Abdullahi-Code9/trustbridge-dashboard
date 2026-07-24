@@ -138,6 +138,10 @@ All docs are cross-linked from this README:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/[...nextauth]` | GET/POST | NextAuth.js handlers |
+| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
+| `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
+| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
+| `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
@@ -156,9 +160,11 @@ All docs are cross-linked from this README:
 
 `src/middleware.ts` protects `/register` (requires sign-in) and `/dashboard` (requires sign-in + `GITHUB_MAINTAINER_ORG` membership).
 
-### Security — CSRF protection
+### Security
 
-All mutating API routes (`POST /api/check`, `POST /api/register`, `POST /api/contributors`) validate the `Origin` / `Referer` header against the application's host. Non-browser clients that do not send an `Origin` header are allowed. For full details, see [docs/CSRF.md](./docs/CSRF.md).
+- **CSRF protection** — All mutating API routes validate the `Origin` / `Referer` header against the application's host. See [docs/CSRF.md](./docs/CSRF.md).
+- **Rate limiting** — `POST /api/check` is rate-limited per IP (default 10 requests per minute) to prevent Horizon API abuse. Configure via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_REQUESTS`.
+- **CSV / JSON exports** — Maintainer dashboard exports contributor data as CSV or JSON. Export helpers live in `src/lib/csv.ts` and are covered by snapshot tests.
 
 ---
 

@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/check/route";
 
@@ -8,6 +7,7 @@ vi.mock("@/lib/horizon", () => ({
 }));
 
 import { checkStellarAddress } from "@/lib/horizon";
+import { resetRateLimit } from "@/lib/rate-limit";
 
 function post(body: unknown) {
   return new NextRequest("http://localhost:3000/api/check", {
@@ -31,26 +31,10 @@ function post(body: unknown, headers?: Record<string, string>) {
 
 describe("POST /api/check", () => {
   beforeEach(() => {
+    resetRateLimit();
     vi.clearAllMocks();
   });
 
-  it("returns 200 with mocked result for valid address", async () => {
-    vi.mocked(checkStellarAddress).mockResolvedValue({
-      funded: true,
-      trustline: true,
-      xlm_balance: 2,
-      readiness: "ready",
-      errors: [],
-    } as any);
-
-    const r = post({ address: "GBSX" });
-    const res = await POST(r);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.funded).toBe(true);
-  });
-
-  it("returns 400 for missing address", async () => {
   it("rejects cross-origin requests before touching Horizon", async () => {
     const r = post({ address: "GBSX" }, {
       origin: "https://evil.com",
@@ -60,6 +44,30 @@ describe("POST /api/check", () => {
     const res = await POST(r);
     expect(res.status).toBe(403);
     expect(checkStellarAddress).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 when rate limit exceeded", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: true,
+      trustline: true,
+      xlm_balance: 2,
+      readiness: "ready",
+      horizon_error: null,
+    } as any);
+
+    // Exhaust the default limit (10 requests)
+    for (let i = 0; i < 10; i++) {
+      const r = post({ address: "GBSX" });
+      const res = await POST(r);
+      expect(res.status).toBe(200);
+    }
+
+    const r = post({ address: "GBSX" });
+    const res = await POST(r);
+    expect(res.status).toBe(429);
+    const retryAfter = res.headers.get("retry-after");
+    expect(retryAfter).toBeTruthy();
+    expect(checkStellarAddress).toHaveBeenCalledTimes(10);
   });
 
   it("returns 400 for missing address (same-origin)", async () => {
