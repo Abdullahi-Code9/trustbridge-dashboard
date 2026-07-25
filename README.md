@@ -157,6 +157,7 @@ All docs are cross-linked from this README:
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
+| `/api/webhooks/github-org-membership` | POST | GitHub org membership sync webhook (no auth, signature verified) |
 | `/api/stats` | GET | Aggregate readiness statistics |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
@@ -170,6 +171,31 @@ All docs are cross-linked from this README:
 ### Middleware
 
 `src/middleware.ts` protects `/register` (requires sign-in) and `/dashboard` (requires sign-in + `GITHUB_MAINTAINER_ORG` membership).
+
+### GitHub Organization Membership Webhook
+
+The dashboard listens for GitHub organization membership changes via webhook at `/api/webhooks/github-org-membership`. When a member is added to or removed from your maintainer organization, the webhook records an audit entry, allowing the system to track membership changes.
+
+**Setup:**
+
+1. Generate a webhook secret:
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. Set `GITHUB_WEBHOOK_SECRET` in your `.env.local`:
+   ```bash
+   GITHUB_WEBHOOK_SECRET=<generated-secret>
+   ```
+
+3. Configure the webhook in your GitHub organization:
+   - Go to Organization Settings → Webhooks → Add webhook
+   - Payload URL: `https://your-domain.com/api/webhooks/github-org-membership`
+   - Content type: `application/json`
+   - Secret: The same secret from step 1
+   - Events: Select "Organization" and check "Member"
+
+The webhook endpoint returns HTTP 202 (Accepted) for all webhook deliveries to prevent GitHub retry storms. Processing is logged and failures are captured in the audit log.
 
 ### Security
 
@@ -199,6 +225,7 @@ NEXT_PUBLIC_MIN_XLM_BALANCE=1
 NEXT_PUBLIC_BASE_RESERVE_XLM=0.5  # optional, Stellar base reserve used for spendable-balance checks
 SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
 SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
+GITHUB_WEBHOOK_SECRET= # optional, for verifying GitHub organization membership webhooks
 ```
 
 > **Note:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` should point at the same Stellar network. Their defaults don't (mainnet vs. testnet) — the dashboard detects and warns on this mismatch via `/api/settings/network` and the maintainer dashboard's network status panel, and records it to the audit log.
