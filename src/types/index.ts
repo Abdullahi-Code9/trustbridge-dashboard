@@ -48,6 +48,7 @@ export interface ContributorRow {
 export type AuditAction =
   | "recheck.single"
   | "recheck.batch"
+  | "recheck.self_service"
   | "registration.create"
   | "registration.update"
   | "network_config_mismatch_detected";

@@ -153,6 +153,7 @@ All docs are cross-linked from this README:
 | `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
+| `/api/register/recheck` | POST | Self-service recheck for contributors to verify their own Stellar address (authenticated) |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
