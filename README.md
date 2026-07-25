@@ -29,7 +29,7 @@
 | Audience | Capability |
 |----------|------------|
 | **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events |
+| **Maintainers** | View all registrations, **search** by username/address, **toggle column visibility**, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events, view admin metrics |
 | **Everyone** | Public landing page with Wave readiness stats |
 
 ### Readiness model
@@ -141,6 +141,7 @@ All docs are cross-linked from this README:
 | `/` | Public | Landing page, TrustBridge explainer, Wave stats |
 | `/register` | GitHub OAuth | Contributor Stellar address registration |
 | `/dashboard` | GitHub OAuth + org member | Maintainer payout readiness table |
+| `/dashboard/metrics` | GitHub OAuth + org member | Admin metrics: readiness counts, audit activity, ops config |
 
 ### API routes
 
@@ -216,16 +217,26 @@ openssl rand -base64 32
 
 Unit tests run on [Vitest](https://vitest.dev/) and cover the pure business logic
 (readiness/authorization rules, the Horizon retry helper, audit-log formatting,
-batch verification, and the Soroban event-timeline read path — including the
-`GET /api/soroban/events` maintainer guard, a missing `SOROBAN_CONTRACT_ID`,
-and simulated RPC outages/rate limits, all without a live network call):
+batch verification, contributor search/filter/sort/column helpers, the
+`GET /api/metrics` admin endpoint, and the Soroban event-timeline read path):
 
 ```bash
-npm test          # run once
-npm run test:watch
+npm test              # run all Vitest unit + API tests once
+npm run test:watch    # watch mode
+npm run test:unit     # unit tests only
+npm run test:api      # API route tests only
 ```
 
-Tests also run in CI on every push and pull request, before the build.
+End-to-end tests run on [Playwright](https://playwright.dev/) and cover the
+maintainer dashboard flow end-to-end (access control, table search & column
+toggles, re-check, and the admin metrics page):
+
+```bash
+npm run test:e2e      # headless Playwright run (requires running app)
+npm run test:e2e:ui   # interactive Playwright UI
+```
+
+All tests run in CI on every push and pull request, before the build.
 
 > **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`,
 > issue #22 adds an `AuditLog` table, and issue #8 adds a `spendableXlmBalance`
