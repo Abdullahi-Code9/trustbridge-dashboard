@@ -19,9 +19,14 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/soroban-register", () => ({
+  mirrorRegistrationToSoroban: vi.fn(),
+}));
+
 import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
+import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
 
 const sameOriginHeaders: Record<string, string> = {
   origin: "http://localhost:3000",
@@ -85,30 +90,46 @@ describe("POST /api/register", () => {
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1" },
     } as any);
-    vi.mocked(isValidStellarAddress).mockReturnValue(true);
     vi.mocked(prisma.registration.findUnique).mockResolvedValue(null);
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: true,
       trustline: true,
-      xlm_balance: 2,
+      xlm_balance: "2",
       readiness: "ready",
       horizon_error: null,
+      trustline_authorized: true,
+      verified: true,
+      spendable_xlm_balance: "1.5",
+      errors: [],
     } as any);
     vi.mocked(prisma.registration.upsert).mockResolvedValue({
       id: "reg-1",
       userId: "user-1",
-      stellarAddress: "GBSX",
+      stellarAddress: "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ",
       funded: true,
       trustlineReady: true,
-      xlmBalance: 2,
+      trustlineAuthorized: true,
+      xlmBalance: "2",
+      spendableXlmBalance: "1.5",
       lastCheckedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     } as any);
+    vi.mocked(mirrorRegistrationToSoroban).mockResolvedValue({
+      success: true,
+      errors: [],
+    });
 
-    const r = post({ stellarAddress: "GBSX" });
+    const r = post({
+      stellarAddress: "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ",
+    });
     const res = await POST(r);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.registration.stellarAddress).toBe("GBSX");
+    expect(json.registration.stellarAddress).toBe(
+      "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ"
+    );
+    expect(mirrorRegistrationToSoroban).toHaveBeenCalled();
   });
 });

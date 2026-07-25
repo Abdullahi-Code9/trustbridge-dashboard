@@ -8,6 +8,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
 import { validateRegistrationInput } from "@/lib/register-validation";
+import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,6 +78,12 @@ export async function POST(request: NextRequest) {
         spendableXlmBalance: horizonResult.spendable_xlm_balance,
         lastCheckedAt: new Date(),
       },
+    });
+
+    // Mirror registration to Soroban contract (best-effort, non-blocking).
+    // Fire-and-forget: don't await or let failures affect the response.
+    mirrorRegistrationToSoroban(registration).catch((error) => {
+      console.error("Soroban registration mirror failed:", error);
     });
 
     await recordAuditLog({
