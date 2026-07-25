@@ -28,9 +28,19 @@
 
 | Audience | Capability |
 |----------|------------|
-| **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, Wave prep workspace with stats and bulk export (CSV/JSON), review recent Soroban contract events |
+| **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve), view outreach template examples |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, Wave prep workspace with stats and bulk export (CSV/JSON), generate outreach templates for contributors, review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
+
+### Outreach templates
+
+The dashboard includes a template generator (on the register page) that creates contributor outreach materials in three formats:
+
+- **Email** — subject line, body, next steps, wallet proof guidelines
+- **Markdown** — checklist, troubleshooting table, with emoji and formatting
+- **Plain text** — simple, universal format for copy-paste or SMS
+
+Templates are customizable by Wave number, contributor name, minimum XLM requirement, deadline, and support email. Download or copy directly to clipboard.
 
 ### Readiness model
 
