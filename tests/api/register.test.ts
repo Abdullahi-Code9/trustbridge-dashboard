@@ -19,14 +19,9 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/stellar", () => ({
-  isValidStellarAddress: vi.fn(),
-}));
-
 import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
-import { isValidStellarAddress } from "@/lib/stellar";
 
 const sameOriginHeaders: Record<string, string> = {
   origin: "http://localhost:3000",
@@ -62,14 +57,27 @@ describe("POST /api/register", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 400 for invalid address (same-origin + session)", async () => {
+  it("returns 400 for empty address", async () => {
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1" },
     } as any);
-    vi.mocked(isValidStellarAddress).mockReturnValue(false);
-    const r = post({ stellarAddress: "bad" });
+    const r = post({ stellarAddress: "" });
     const res = await POST(r);
     expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain("required");
+    expect(json.validationErrors).toBeDefined();
+  });
+
+  it("returns 400 for invalid address format", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1" },
+    } as any);
+    const r = post({ stellarAddress: "SBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ" });
+    const res = await POST(r);
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.validationErrors).toBeDefined();
     expect(checkStellarAddress).not.toHaveBeenCalled();
   });
 

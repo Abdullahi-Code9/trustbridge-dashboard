@@ -7,7 +7,7 @@ import { DEFAULT_ASSET } from "@/lib/constants";
 import { assertSameOrigin } from "@/lib/csrf";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
-import { isValidStellarAddress } from "@/lib/stellar";
+import { validateRegistrationInput } from "@/lib/register-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,21 +24,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json()) as { stellarAddress?: string };
-    const stellarAddress = body.stellarAddress?.trim();
 
-    if (!stellarAddress) {
+    // Validate input
+    const validationErrors = validateRegistrationInput(body);
+    if (validationErrors.length > 0) {
       return NextResponse.json(
-        { error: "Stellar address is required" },
+        {
+          error: validationErrors[0].message,
+          validationErrors,
+        },
         { status: 400 }
       );
     }
 
-    if (!isValidStellarAddress(stellarAddress)) {
-      return NextResponse.json(
-        { error: "Invalid Stellar G-address" },
-        { status: 400 }
-      );
-    }
+    const stellarAddress = body.stellarAddress!.trim();
 
     const existing = await prisma.registration.findUnique({
       where: { stellarAddress },
