@@ -112,6 +112,7 @@ All docs are cross-linked from this README:
 | [**Deployment**](./docs/DEPLOYMENT.md) | Vercel deployment checklist |
 | [**Contributing**](./docs/CONTRIBUTING.md) | How to contribute to this repo |
 | [**CSRF protection**](./docs/CSRF.md) | Threat model, protected routes, non-browser client policy, testing guide |
+| [**Sentry error tracking**](./docs/SENTRY.md) | Setup, environment variables, instrumented routes, testing guide |
 
 ---
 
@@ -160,6 +161,7 @@ All docs are cross-linked from this README:
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
+| `/api/health` | GET | Liveness + readiness probe — DB ping and CSV staleness check (public, always 200) |
 
 ### Resilience
 
