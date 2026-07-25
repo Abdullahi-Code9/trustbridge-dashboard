@@ -147,16 +147,14 @@ All docs are cross-linked from this README:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/[...nextauth]` | GET/POST | NextAuth.js handlers |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
-| `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
-| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
-| `/api/stats` | GET | Aggregate readiness statistics | — |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
-| `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
-| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
+| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` (10 req/min rate limit per IP) |
+| `/api/register` | GET | Read current user's registration (authenticated) |
+| `/api/register` | POST | Save/create contributor registration with validation (authenticated) |
+| `/api/contributors` | GET | List all contributors with pagination `?page=1&limit=50` (maintainer only) |
+| `/api/contributors` | POST | Batch re-check all contributors via Horizon (maintainer only) |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
-| `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
+| `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
@@ -227,10 +225,7 @@ npm run test:watch
 
 Tests also run in CI on every push and pull request, before the build.
 
-> **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`,
-> issue #22 adds an `AuditLog` table, and issue #8 adds a `spendableXlmBalance`
-> column to `Registration`. After pulling these changes, sync your database with
-> `npm run db:push`.
+> **Schema hardening:** The `Registration` table enforces unique `stellarAddress` per user (one-to-one via `userId`), with comprehensive indexes on `trustlineReady`, `trustlineAuthorized`, `funded`, and `lastCheckedAt` for efficient filtering. All models include detailed field documentation in `prisma/schema.prisma`. The schema supports optimistic registration updates with proper cascading deletes and constraints to ensure data integrity during high-concurrency Wave operations.
 
 ---
 

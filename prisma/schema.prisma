@@ -8,20 +8,32 @@ datasource db {
 }
 
 model User {
+  /// Unique user ID (CUID format)
   id              String        @id @default(cuid())
+  /// Unique GitHub user ID (from OAuth)
   githubId        String        @unique
+  /// GitHub username (login) — unique identifier for display
   githubUsername  String        @unique
+  /// User's full name from GitHub profile (optional)
   name            String?
+  /// User's email from GitHub profile (optional)
   email           String?
+  /// Avatar URL from GitHub profile (optional)
   image           String?
   /// Encrypted at rest (AES-256-GCM, see src/lib/token-crypto.ts). Never plaintext.
   accessToken     String?
+  /// NextAuth accounts (OAuth provider links)
   accounts        Account[]
+  /// NextAuth sessions (JWT/database sessions)
   sessions        Session[]
+  /// One-to-one registration link (optional, null until user registers)
   registration    Registration?
+  /// Token encryption/decryption audit trail
   auditLogs       TokenAuditLog[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  @@index([githubId])
 }
 
 model TokenAuditLog {
@@ -38,35 +50,55 @@ model TokenAuditLog {
 }
 
 model Registration {
+  /// Unique registration ID (CUID format)
   id             String    @id @default(cuid())
+  /// Foreign key to User (one-to-one, cascade on delete)
   userId         String    @unique
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Unique Stellar G-address (56 chars, starts with G)
   stellarAddress String    @unique
+  /// Account is funded (balance > 0)
   trustlineReady Boolean   @default(false)
+  /// USDC trustline exists and is authorized by issuer
   trustlineAuthorized Boolean @default(false)
+  /// Account has at least minimum XLM balance
   funded         Boolean   @default(false)
+  /// Raw XLM balance from Horizon (string to preserve precision)
   xlmBalance     String    @default("0")
+  /// Spendable XLM after subtracting reserve and selling liabilities (string for precision)
   spendableXlmBalance String @default("0")
+  /// Last successful Horizon verification timestamp
   lastCheckedAt  DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@index([trustlineReady])
+  @@index([trustlineAuthorized])
+  @@index([funded])
   @@index([lastCheckedAt])
+  @@index([userId])
 }
 
 model AuditLog {
+  /// Unique audit log entry ID (CUID format)
   id         String   @id @default(cuid())
+  /// User ID of the actor performing the action (null for system actions)
   actorId    String?
+  /// GitHub username of the actor for display (denormalized for log readability)
   actorLogin String?
+  /// Action name (e.g. "registration.create", "recheck.batch")
   action     String
+  /// ID of the target resource affected by the action (e.g. registration ID)
   targetId   String?
+  /// Human-readable label of the target (e.g. Stellar address)
   targetLabel String?
+  /// Structured metadata for the action (JSON blob, e.g. {refreshed: 42})
   metadata   Json?
   createdAt  DateTime @default(now())
 
   @@index([createdAt])
   @@index([action])
+  @@index([actorId])
 }
 
 model Account {
