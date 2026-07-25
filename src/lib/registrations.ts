@@ -58,17 +58,30 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   return buildDashboardStats(totalContributors, readyCount);
 }
 
-export async function getContributors(): Promise<ContributorRow[]> {
-  const registrations = await prisma.registration.findMany({
-    include: {
-      user: {
-        select: { githubUsername: true },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+export async function getContributors(
+  page: number = 1,
+  limit: number = 50
+): Promise<{ contributors: ContributorRow[]; total: number }> {
+  const skip = (page - 1) * limit;
 
-  return registrations.map(toContributorRow);
+  const [registrations, total] = await Promise.all([
+    prisma.registration.findMany({
+      include: {
+        user: {
+          select: { githubUsername: true },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.registration.count(),
+  ]);
+
+  return {
+    contributors: registrations.map(toContributorRow),
+    total,
+  };
 }
 
 /**
