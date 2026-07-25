@@ -29,7 +29,7 @@
 | Audience | Capability |
 |----------|------------|
 | **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, Wave prep workspace with stats and bulk export (CSV/JSON), review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
 
 ### Readiness model
