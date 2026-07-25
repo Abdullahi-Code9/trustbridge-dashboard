@@ -157,6 +157,8 @@ All docs are cross-linked from this README:
 | `/api/contributors/[id]` | POST | Queue a **single** contributor re-check via Horizon (maintainer only) |
 | `/api/contributors/queue/status` | GET | Check background queue metrics and job counts (maintainer only) |
 | `/api/contributors/queue/jobs/[jobId]` | GET | Get status and result of a queued recheck job (maintainer only) |
+| `/api/contributors/export/csv` | GET | Server-side CSV export of all contributors (maintainer only) |
+| `/api/contributors/export/json` | GET | Server-side JSON export of all contributors (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
