@@ -73,7 +73,17 @@ cd trustbridge-dashboard
 npm install
 ```
 
-### 2. Configure environment
+### 2. Start the dev database stack (optional)
+
+For local development with PostgreSQL in Docker:
+
+```bash
+docker-compose up -d
+```
+
+See [docs/DOCKER_COMPOSE.md](./docs/DOCKER_COMPOSE.md) for details.
+
+### 3. Configure environment
 
 ```bash
 cp .env.example .env.local
@@ -81,13 +91,19 @@ cp .env.example .env.local
 
 Fill in all required values — see [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for full reference.
 
-### 3. Initialize the database
+If using Docker Compose, set:
+
+```bash
+DATABASE_URL="postgresql://trustbridge:trustbridge-dev-password@localhost:5432/trustbridge_dashboard?schema=public"
+```
+
+### 4. Initialize the database
 
 ```bash
 npm run db:push
 ```
 
-### 4. Run locally
+### 5. Run locally
 
 ```bash
 npm run dev
@@ -106,6 +122,7 @@ All docs are cross-linked from this README:
 | Document | Description |
 |----------|-------------|
 | [**Setup guide**](./docs/SETUP.md) | Step-by-step local development setup |
+| [**Docker Compose stack**](./docs/DOCKER_COMPOSE.md) | Containerized dev environment with PostgreSQL |
 | [**Environment variables**](./docs/ENVIRONMENT.md) | Every env var explained |
 | [**Architecture**](./docs/ARCHITECTURE.md) | System design, data flow, auth model |
 | [**Project structure**](./docs/PROJECT_STRUCTURE.md) | Directory layout and key files |
@@ -147,13 +164,10 @@ All docs are cross-linked from this README:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/[...nextauth]` | GET/POST | NextAuth.js handlers |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
-| `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
-| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
-| `/api/stats` | GET | Aggregate readiness statistics | — |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
+| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` | 10 req/min |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
+| `/api/contributors/paginated` | GET | Paginated contributors for infinite scroll `?limit=25&cursor=...` (maintainer only) |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
@@ -165,6 +179,16 @@ All docs are cross-linked from this README:
 
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
 - **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If any contributor hasn't been verified within the configured window (default 24h), the dashboard shows an amber warning banner and requires confirmation before exporting. Configurable via `STALE_CSV_MAX_AGE_MS`.
+
+### Structured logging
+
+- **Request/response logging** — `src/lib/logger.ts` provides structured JSON logging for debugging and monitoring. All API requests, Horizon calls, and database operations can be logged with context and metadata. Enable debug logging via `DEBUG=true` environment variable.
+- **Observability** — Log format includes timestamp, log level (info/warn/error/debug), context identifier, message, and optional details. Perfect for ingestion into centralized logging platforms.
+
+### Pagination & infinite scroll
+
+- **Cursor-based pagination** — `/api/contributors/paginated` supports efficient cursor-based pagination via the `useInfiniteContributors()` React Query hook. Useful for tables with 100+ contributors.
+- **React Query integration** — `src/lib/use-infinite-contributors.ts` provides a drop-in hook for infinite scroll UIs. Automatically fetches next pages as users scroll.
 
 ### Middleware
 
