@@ -150,16 +150,26 @@ All docs are cross-linked from this README:
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
-| `/api/stats` | GET | Aggregate readiness statistics | — |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
-| `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
-| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
-| `/api/stats` | GET | Aggregate readiness statistics |
+| `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
+| `/api/openapi.json` | GET | OpenAPI 3.0.0 specification for API documentation |
+
+### OpenAPI Documentation
+
+The API publishes a complete OpenAPI 3.0.0 specification at `/api/openapi.json`. This spec documents all endpoints, request/response schemas, security requirements, and pagination support.
+
+**Using the spec:**
+
+- **Swagger UI**: Point to `http://localhost:3000/api/openapi.json` to browse interactive API docs
+- **Redoc**: Generate static docs from the spec URL
+- **Code generation**: Use tools like `openapi-generator` to scaffold client SDKs
+- **Testing**: Use spec-driven testing tools to validate API behavior
+
+The spec is cached for 1 hour and automatically includes the correct base URL based on the request host.
 
 ### Resilience
 
