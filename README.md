@@ -232,7 +232,38 @@ GITHUB_WEBHOOK_SECRET= # optional, for verifying GitHub organization membership 
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.
 
+### Environment Validation on Boot
+
+The dashboard validates all environment variables using Zod at startup (`src/lib/env-validation.ts`). This schema:
+
+- **Ensures required fields are present** — missing `GITHUB_CLIENT_ID`, `DATABASE_URL`, etc. will fail fast
+- **Casts numeric values** — `RATE_LIMIT_MAX_REQUESTS` → number, `NEXT_PUBLIC_MIN_XLM_BALANCE` → float
+- **Validates URLs** — `DATABASE_URL`, `NEXTAUTH_URL`, `SOROBAN_RPC_URL` must be valid URLs
+- **Provides defaults** — optional fields like `NEXT_PUBLIC_HORIZON_URL` default to Stellar mainnet
+- **Fails on startup** — invalid configuration is caught before any route handlers run
+
+Use `validateEnv()` or `getValidatedEnv()` to get the fully typed, validated configuration:
+
+```typescript
+import { getValidatedEnv } from "@/lib/env-validation";
+
+const env = getValidatedEnv();
+// env is strongly typed and guaranteed valid
+```
+
 Generate `NEXTAUTH_SECRET`:
+
+```bash
+openssl rand -base64 32
+```
+
+Generate `TOKEN_ENCRYPTION_KEY`:
+
+```bash
+openssl rand -base64 32
+```
+
+Generate `GITHUB_WEBHOOK_SECRET` (if using org membership sync):
 
 ```bash
 openssl rand -base64 32
