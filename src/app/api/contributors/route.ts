@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
-import { getContributors, refreshAllContributors } from "@/lib/registrations";
+import { getContributors } from "@/lib/registrations";
+import { backgroundQueue } from "@/lib/queue-worker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,15 +27,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const count = await refreshAllContributors();
-  const contributors = await getContributors();
-
-  await recordAuditLog({
-    action: "recheck.batch",
+  const jobId = backgroundQueue.enqueue("recheck.batch", {
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
-    metadata: { refreshed: count },
   });
 
-  return NextResponse.json({ refreshed: count, contributors });
+  await recordAuditLog({
+    action: "recheck.batch.queued",
+    actorId: session.user.id,
+    actorLogin: session.user.githubUsername ?? null,
+    metadata: { jobId },
+  });
+
+  const contributors = await getContributors();
+
+  return NextResponse.json({ jobId, contributors });
 }

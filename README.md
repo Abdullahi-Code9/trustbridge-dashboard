@@ -153,8 +153,10 @@ All docs are cross-linked from this README:
 | `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
-| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
-| `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
+| `/api/contributors` | GET/POST | List contributors / queue batch re-check (maintainer only) |
+| `/api/contributors/[id]` | POST | Queue a **single** contributor re-check via Horizon (maintainer only) |
+| `/api/contributors/queue/status` | GET | Check background queue metrics and job counts (maintainer only) |
+| `/api/contributors/queue/jobs/[jobId]` | GET | Get status and result of a queued recheck job (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
 | `/api/stats` | GET | Aggregate readiness statistics |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
@@ -163,6 +165,7 @@ All docs are cross-linked from this README:
 
 ### Resilience
 
+- **Background recheck queue** — `src/lib/background-queue.ts` implements an in-memory job queue for Horizon rechecks. All recheck requests (batch and single) are queued and processed with a default concurrency limit of 2. This prevents Horizon rate-limit exhaustion and allows maintainers to request rechecks without blocking. Check queue status and job results via `/api/contributors/queue/status` and `/api/contributors/queue/jobs/[jobId]`. Configurable concurrency via code (currently hardcoded at 2 jobs max). Job history is retained in memory (last 100 completed jobs).
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
 - **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If any contributor hasn't been verified within the configured window (default 24h), the dashboard shows an amber warning banner and requires confirmation before exporting. Configurable via `STALE_CSV_MAX_AGE_MS`.
 
