@@ -56,7 +56,11 @@ describe("POST /api/contributors", () => {
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
-    vi.mocked(refreshAllContributors).mockResolvedValue(3);
+    vi.mocked(refreshAllContributors).mockResolvedValue({
+      refreshed: 3,
+      changed: 0,
+      diffs: [],
+    });
     vi.mocked(getContributors).mockResolvedValue([] as any);
 
     const r = post();
