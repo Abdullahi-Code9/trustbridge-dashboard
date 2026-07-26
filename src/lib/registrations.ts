@@ -1,15 +1,24 @@
 import "server-only";
 
-import type { Registration } from "@prisma/client";
+import type { Registration, DisputeProof, DisputeStatus } from "@prisma/client";
+import { format } from "date-fns";
 
 import { prisma } from "@/lib/prisma";
 import { computeReadiness, computeVerified } from "@/lib/readiness";
 import { buildDashboardStats } from "@/lib/stats";
-import type { ContributorRow, DashboardStats } from "@/types";
+import type { ContributorRow, DashboardStats, ReadinessStatus } from "@/types";
 
 type RegistrationWithUser = Registration & {
   user: { githubUsername: string };
 };
+
+/** Readiness for any persisted registration row (with or without its user join). */
+function readinessOf(row: Registration): ReadinessStatus {
+  return computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
+    authorized: row.trustlineAuthorized,
+    spendableBalance: row.spendableXlmBalance,
+  });
+}
 
 /** Map a persisted registration (+ user) to a serializable contributor row. */
 export function toContributorRow(row: RegistrationWithUser): ContributorRow {
@@ -29,11 +38,7 @@ export function toContributorRow(row: RegistrationWithUser): ContributorRow {
     spendableXlmBalance: row.spendableXlmBalance,
     usdcBalance: row.usdcBalance,
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
-    horizonLatencyMs: row.horizonLatencyMs,
-    readiness: computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
-      authorized: row.trustlineAuthorized,
-      spendableBalance: row.spendableXlmBalance,
-    }),
+    readiness: readinessOf(row),
   };
 }
 
@@ -60,7 +65,63 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   return buildDashboardStats(totalContributors, readyCount);
 }
 
-export async function getContributors(): Promise<ContributorRow[]> {
+export async function getContributors(
+  page: number = 1,
+  limit: number = 50
+): Promise<{ contributors: ContributorRow[]; total: number }> {
+  const skip = (page - 1) * limit;
+
+  const [registrations, total] = await Promise.all([
+    prisma.registration.findMany({
+      include: {
+        user: {
+          select: { githubUsername: true },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.registration.count(),
+  ]);
+
+  return {
+    contributors: registrations.map(toContributorRow),
+    total,
+  };
+}
+
+export interface ReadinessDiff {
+  registrationId: string;
+  previousReadiness: ReadinessStatus;
+  newReadiness: ReadinessStatus;
+  changed: boolean;
+}
+
+interface RecheckOutcome {
+  registration: Registration;
+  diff: ReadinessDiff;
+}
+
+/**
+ * Cursor-paginated contributor query
+ * @param cursor Base64-encoded registration ID for pagination
+ * @param limit Number of results (1-100, default 50)
+ */
+export async function getContributorsPaginated(
+  cursor?: string,
+  limit: number = 50
+): Promise<{
+  contributors: ContributorRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}> {
+  const { encodeCursor, decodeCursor } = await import("@/lib/cursor-pagination");
+
+  const decodedCursor = cursor ? decodeCursor(cursor) : null;
+  const normalizedLimit = Math.min(Math.max(limit, 1), 100);
+
+  // Fetch normalizedLimit + 1 to determine if there are more records
   const registrations = await prisma.registration.findMany({
     include: {
       user: {
@@ -68,22 +129,41 @@ export async function getContributors(): Promise<ContributorRow[]> {
       },
     },
     orderBy: { updatedAt: "desc" },
+    ...(decodedCursor && {
+      skip: 1, // Skip the cursor record itself
+      cursor: { id: decodedCursor },
+    }),
+    take: normalizedLimit + 1,
   });
 
-  return registrations.map(toContributorRow);
+  const hasMore = registrations.length > normalizedLimit;
+  const pageData = registrations.slice(0, normalizedLimit);
+  const nextCursor = hasMore
+    ? encodeCursor(pageData[pageData.length - 1].id)
+    : null;
+
+  return {
+    contributors: pageData.map(toContributorRow),
+    nextCursor,
+    hasMore,
+  };
 }
 
 /**
  * Re-run the Horizon check for a single registration and persist the result.
- * Shared by the single- and batch-recheck flows.
+ * Shared by the single- and batch-recheck flows. Captures the readiness
+ * before and after the check so callers can audit what actually changed,
+ * rather than just the post-recheck state.
  */
 async function recheckRegistration(
   registration: Registration
-): Promise<Registration> {
+): Promise<RecheckOutcome> {
+  const previousReadiness = readinessOf(registration);
+
   const { checkStellarAddress } = await import("@/lib/horizon");
   const result = await checkStellarAddress(registration.stellarAddress);
 
-  return prisma.registration.update({
+  const updated = await prisma.registration.update({
     where: { id: registration.id },
     data: {
       funded: result.funded,
@@ -96,34 +176,64 @@ async function recheckRegistration(
       lastCheckedAt: new Date(),
     },
   });
+
+  const newReadiness = readinessOf(updated);
+
+  return {
+    registration: updated,
+    diff: {
+      registrationId: updated.id,
+      previousReadiness,
+      newReadiness,
+      changed: previousReadiness !== newReadiness,
+    },
+  };
 }
 
-export async function refreshAllContributors(): Promise<number> {
+export interface RefreshAllSummary {
+  refreshed: number;
+  changed: number;
+  diffs: ReadinessDiff[];
+}
+
+export async function refreshAllContributors(): Promise<RefreshAllSummary> {
   const registrations = await prisma.registration.findMany();
 
-  await Promise.all(
+  const outcomes = await Promise.all(
     registrations.map((registration) => recheckRegistration(registration))
   );
 
-  return registrations.length;
+  const diffs = outcomes.map((outcome) => outcome.diff);
+
+  return {
+    refreshed: registrations.length,
+    changed: diffs.filter((diff) => diff.changed).length,
+    diffs,
+  };
+}
+
+export interface RefreshContributorResult {
+  contributor: ContributorRow;
+  diff: ReadinessDiff;
 }
 
 /**
  * Re-check a single contributor by registration id. Returns the refreshed
- * contributor row, or `null` when no registration matches.
+ * contributor row plus the before/after readiness diff, or `null` when no
+ * registration matches.
  */
 export async function refreshContributor(
   id: string
-): Promise<ContributorRow | null> {
+): Promise<RefreshContributorResult | null> {
   const registration = await prisma.registration.findUnique({ where: { id } });
   if (!registration) return null;
 
-  await recheckRegistration(registration);
+  const { diff } = await recheckRegistration(registration);
 
   const updated = await prisma.registration.findUnique({
     where: { id },
     include: { user: { select: { githubUsername: true } } },
   });
 
-  return updated ? toContributorRow(updated) : null;
+  return updated ? { contributor: toContributorRow(updated), diff } : null;
 }

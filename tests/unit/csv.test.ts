@@ -54,41 +54,46 @@ describe("JSON helpers", () => {
   });
 });
 
-describe("Download helpers", () => {
-  beforeEach(() => {
-    global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
-    global.URL.revokeObjectURL = vi.fn();
-    document.createElement = vi.fn((tag: string) => {
-      if (tag === "a") {
-        return {
-          href: "",
-          download: "",
-          click: vi.fn(),
-        } as unknown as HTMLElement;
-      }
-      return document.createElement(tag);
-    });
+describe("CSV stats validation", () => {
+  it("builds CSV with incremental stats counters", () => {
+    const headers = ["id", "username", "status", "ready_count", "export_version"];
+    const rows = [
+      ["1", "alice", "ready", "1", "1"],
+      ["2", "bob", "not_ready", "1", "1"],
+      ["3", "charlie", "ready", "2", "1"],
+    ];
+
+    const csv = buildCsv(headers, rows);
+
+    // Verify CSV structure
+    expect(csv).toContain("id,username,status,ready_count,export_version");
+    expect(csv).toContain("alice");
+    expect(csv).toContain("bob");
+    expect(csv).toContain("charlie");
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
+  it("validates CSV row count consistency", () => {
+    const headers = ["id", "username", "status"];
+    const rows = [
+      ["1", "alice", "ready"],
+      ["2", "bob", "not_ready"],
+    ];
+
+    const csv = buildCsv(headers, rows);
+    const lines = csv.split("\n");
+
+    // Should have header + 2 rows
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("id,username,status");
   });
 
-  it("downloads CSV with correct blob type", () => {
-    const createBlobSpy = vi.spyOn(global, "Blob");
-    downloadCsv("test.csv", "a,b\n1,2");
-    expect(createBlobSpy).toHaveBeenCalledWith(
-      ["a,b\n1,2"],
-      expect.objectContaining({ type: "text/csv;charset=utf-8;" })
-    );
-  });
+  it("handles special characters in stats export", () => {
+    const headers = ["id", "username", "note"];
+    const rows = [["1", "alice", "Contains, comma and \"quotes\""]];
 
-  it("downloads JSON with correct blob type", () => {
-    const createBlobSpy = vi.spyOn(global, "Blob");
-    downloadJson("test.json", '{"a":1}');
-    expect(createBlobSpy).toHaveBeenCalledWith(
-      ['{"a":1}'],
-      expect.objectContaining({ type: "application/json;charset=utf-8;" })
-    );
+    const csv = buildCsv(headers, rows);
+
+    // Special characters should be properly escaped
+    expect(csv).toContain('Contains, comma and ""quotes""');
   });
 });

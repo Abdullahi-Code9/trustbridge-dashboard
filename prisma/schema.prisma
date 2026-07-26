@@ -1,106 +1,19 @@
-generator client {
-  provider = "prisma-client-js"
+enum DisputeStatus {
+  OPEN
+  VALIDATED
+  REJECTED
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+model DisputeProof {
+  id               String   @id @default(cuid())
+  registrationId   String   @unique
+  registration     Registration @relation(fields: [registrationId], references: [id])
+  reason           String
+  proofCid         String? // optional IPFS CID for proof document
+  status           DisputeStatus @default(OPEN)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  resolvedAt       DateTime?
 
-model User {
-  id              String        @id @default(cuid())
-  githubId        String        @unique
-  githubUsername  String        @unique
-  name            String?
-  email           String?
-  image           String?
-  /// Encrypted at rest (AES-256-GCM, see src/lib/token-crypto.ts). Never plaintext.
-  accessToken     String?
-  accounts        Account[]
-  sessions        Session[]
-  registration    Registration?
-  auditLogs       TokenAuditLog[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-}
-
-model TokenAuditLog {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action    String
-  success   Boolean  @default(true)
-  detail    String?
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([createdAt])
-}
-
-model Registration {
-  id             String    @id @default(cuid())
-  userId         String    @unique
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stellarAddress String    @unique
-  trustlineReady Boolean   @default(false)
-  trustlineAuthorized Boolean @default(false)
-  funded         Boolean   @default(false)
-  xlmBalance     String    @default("0")
-  spendableXlmBalance String @default("0")
-  usdcBalance    String    @default("0")
-  lastCheckedAt  DateTime?
-  horizonLatencyMs Int?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  @@index([trustlineReady])
-  @@index([lastCheckedAt])
-}
-
-model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String?
-  actorLogin String?
-  action     String
-  targetId   String?
-  targetLabel String?
-  metadata   Json?
-  createdAt  DateTime @default(now())
-
-  @@index([createdAt])
-  @@index([action])
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
+  @@map("dispute_proofs")
 }

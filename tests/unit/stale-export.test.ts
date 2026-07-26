@@ -13,8 +13,11 @@ function makeRow(lastCheckedAt: string | null): ContributorRow {
     githubUsername: "test",
     stellarAddress: "GBSX",
     trustlineReady: true,
+    trustlineAuthorized: true,
+    verified: true,
     funded: true,
     xlmBalance: "2",
+    spendableXlmBalance: "1.5",
     lastCheckedAt,
     readiness: "ready",
   };
