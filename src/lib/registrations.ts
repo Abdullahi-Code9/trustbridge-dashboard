@@ -58,6 +58,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   return buildDashboardStats(totalContributors, readyCount);
 }
 
+/**
+ * Fetch all contributors for display or CSV/JSON export.
+ * For large datasets or concurrent exports, connection pool size matters.
+ * See docs/PRISMA_POOL_TUNING.md for configuration guidance.
+ */
 export async function getContributors(): Promise<ContributorRow[]> {
   const registrations = await prisma.registration.findMany({
     include: {
@@ -94,6 +99,12 @@ async function recheckRegistration(
   });
 }
 
+/**
+ * Re-run the Horizon check for ALL contributors (batch recheck).
+ * Uses Promise.all() for concurrent Horizon calls and database updates.
+ * For 100+ contributors, ensure DATABASE_URL has sufficient connection_limit
+ * in the pool (recommend connection_limit=10+). See docs/PRISMA_POOL_TUNING.md.
+ */
 export async function refreshAllContributors(): Promise<number> {
   const registrations = await prisma.registration.findMany();
 

@@ -112,6 +112,7 @@ All docs are cross-linked from this README:
 | [**Deployment**](./docs/DEPLOYMENT.md) | Vercel deployment checklist |
 | [**Contributing**](./docs/CONTRIBUTING.md) | How to contribute to this repo |
 | [**CSRF protection**](./docs/CSRF.md) | Threat model, protected routes, non-browser client policy, testing guide |
+| [**Prisma pool tuning**](./docs/PRISMA_POOL_TUNING.md) | PostgreSQL connection pool configuration for batch operations (CSV exports, contributor rechecks) |
 
 ---
 
