@@ -5,6 +5,7 @@ import { ArrowUpDown, Download, Loader2, RefreshCw } from "lucide-react";
 
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { SlaCountdown } from "@/components/SlaCountdown";
 import { Button } from "@/components/ui/button";
 import {
   filterContributors,
@@ -139,6 +140,7 @@ export function ContributorTable({
                   <ArrowUpDown className="h-3.5 w-3.5" />
                 </button>
               </th>
+              <th className="px-4 py-3 font-medium">SLA countdown</th>
               {onRecheck && (
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               )}
@@ -148,7 +150,7 @@ export function ContributorTable({
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={onRecheck ? 7 : 6}
+                  colSpan={onRecheck ? 8 : 7}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No contributors match this filter.
@@ -173,6 +175,13 @@ export function ContributorTable({
                   <td className="px-4 py-3">{formatXlmBalance(row.xlmBalance)}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatRelativeTime(row.lastCheckedAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <SlaCountdown
+                      readiness={row.readiness}
+                      lastCheckedAt={row.lastCheckedAt ? new Date(row.lastCheckedAt) : null}
+                      slaHours={24}
+                    />
                   </td>
                   {onRecheck && (
                     <td className="px-4 py-3 text-right">
