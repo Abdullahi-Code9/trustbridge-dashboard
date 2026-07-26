@@ -28,9 +28,19 @@
 
 | Audience | Capability |
 |----------|------------|
-| **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events |
+| **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve), view outreach template examples |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, Wave prep workspace with stats and bulk export (CSV/JSON), generate outreach templates for contributors, review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
+
+### Outreach templates
+
+The dashboard includes a template generator (on the register page) that creates contributor outreach materials in three formats:
+
+- **Email** — subject line, body, next steps, wallet proof guidelines
+- **Markdown** — checklist, troubleshooting table, with emoji and formatting
+- **Plain text** — simple, universal format for copy-paste or SMS
+
+Templates are customizable by Wave number, contributor name, minimum XLM requirement, deadline, and support email. Download or copy directly to clipboard.
 
 ### Readiness model
 
@@ -112,6 +122,7 @@ All docs are cross-linked from this README:
 | [**Deployment**](./docs/DEPLOYMENT.md) | Vercel deployment checklist |
 | [**Contributing**](./docs/CONTRIBUTING.md) | How to contribute to this repo |
 | [**CSRF protection**](./docs/CSRF.md) | Threat model, protected routes, non-browser client policy, testing guide |
+| [**Sentry error tracking**](./docs/SENTRY.md) | Setup, environment variables, instrumented routes, testing guide |
 
 ---
 
@@ -147,20 +158,20 @@ All docs are cross-linked from this README:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/[...nextauth]` | GET/POST | NextAuth.js handlers |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` (10 req/min rate limit per IP) |
-| `/api/register` | GET | Read current user's registration (authenticated) |
-| `/api/register` | POST | Save/create contributor registration with validation (authenticated) |
-| `/api/contributors` | GET | List all contributors with pagination `?page=1&limit=50` (maintainer only) |
-| `/api/contributors` | POST | Batch re-check all contributors via Horizon (maintainer only) |
+| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
+| `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
+| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
-| `/api/stats` | GET | Aggregate readiness statistics |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
+| `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
+| `/api/health` | GET | Liveness + readiness probe — DB ping and CSV staleness check (public, always 200) |
 
 ### Resilience
 
+- **Background recheck queue** — `src/lib/background-queue.ts` implements an in-memory job queue for Horizon rechecks. All recheck requests (batch and single) are queued and processed with a default concurrency limit of 2. This prevents Horizon rate-limit exhaustion and allows maintainers to request rechecks without blocking. Check queue status and job results via `/api/contributors/queue/status` and `/api/contributors/queue/jobs/[jobId]`. Configurable concurrency via code (currently hardcoded at 2 jobs max). Job history is retained in memory (last 100 completed jobs).
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
 - **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If any contributor hasn't been verified within the configured window (default 24h), the dashboard shows an amber warning banner and requires confirmation before exporting. Configurable via `STALE_CSV_MAX_AGE_MS`.
 

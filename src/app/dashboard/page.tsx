@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
 import {
   ContributorTable,
@@ -10,6 +11,7 @@ import {
 import { NetworkStatusPanel } from "@/components/NetworkStatusPanel";
 import { SorobanEventTimeline } from "@/components/SorobanEventTimeline";
 import { WaveReadinessBar } from "@/components/WaveReadinessBar";
+import { WavePrepWorkspace } from "@/components/WavePrepWorkspace";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,12 +31,9 @@ interface ContributorsResponse {
   contributors: ContributorRow[];
 }
 
-interface ContributorResponse {
-  contributor: ContributorRow;
-}
-
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  const [isExporting, setIsExporting] = useState(false);
 
   const contributorsQuery = useQuery({
     queryKey: ["contributors"],
@@ -77,6 +76,34 @@ export default function DashboardPage() {
           ),
         })
       );
+    },
+  });
+
+  const exportCsvMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/contributors/export/csv");
+      if (!response.ok) throw new Error("CSV export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `contributors-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+
+  const exportJsonMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/contributors/export/json");
+      if (!response.ok) throw new Error("JSON export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `contributors-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
     },
   });
 
@@ -145,6 +172,19 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
+      {!contributorsQuery.isLoading && !contributorsQuery.isError && (
+        <div className="mb-8">
+          <WavePrepWorkspace
+            contributors={contributors}
+            onExportCsv={() => exportCsvMutation.mutate()}
+            onExportJson={() => exportJsonMutation.mutate()}
+            isExporting={
+              exportCsvMutation.isPending || exportJsonMutation.isPending
+            }
+          />
+        </div>
+      )}
+
       {contributorsQuery.isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -155,9 +195,6 @@ export default function DashboardPage() {
       ) : (
         <ContributorTable
           contributors={contributors}
-          onExport={() => {
-            exportContributorsCsv(contributors);
-          }}
           onExport={() => exportContributorsCsv(contributors)}
           onRecheck={(id) => recheckOneMutation.mutate(id)}
           recheckingId={

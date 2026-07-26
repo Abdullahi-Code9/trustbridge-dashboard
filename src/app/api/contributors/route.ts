@@ -4,35 +4,43 @@ import { requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
+import type { ReadinessStatus } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-  if (!(await requireMaintainerSession())) {
+export async function GET() {
+  if (!(await refreshMaintainerSession())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = new URL(request.url);
-  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(
-    100,
-    Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10))
-  );
+  const readinessParam = request.nextUrl.searchParams.get("readiness");
 
-  const { contributors, total } = await getContributors(page, limit);
-  const pages = Math.ceil(total / limit);
+  // Validate the filter if provided
+  if (
+    readinessParam !== null &&
+    !VALID_READINESS_FILTERS.has(readinessParam as ReadinessStatus)
+  ) {
+    return NextResponse.json(
+      {
+        error: `Invalid readiness filter "${readinessParam}". Must be one of: ${Array.from(VALID_READINESS_FILTERS).join(", ")}`,
+      },
+      { status: 400 }
+    );
+  }
+
+  const allContributors = await getContributors();
+
+  const contributors =
+    readinessParam !== null
+      ? allContributors.filter((c) => c.readiness === readinessParam)
+      : allContributors;
 
   return NextResponse.json({
     contributors,
-    pagination: {
-      page,
-      limit,
-      total,
-      pages,
-      hasNextPage: page < pages,
-      hasPrevPage: page > 1,
-    },
+    total: allContributors.length,
+    filtered: contributors.length,
+    ...(readinessParam !== null ? { readiness: readinessParam } : {}),
   });
 }
 
@@ -45,34 +53,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = new URL(request.url);
-  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(
-    100,
-    Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10))
-  );
-
-  const count = await refreshAllContributors();
-  const { contributors, total } = await getContributors(page, limit);
-  const pages = Math.ceil(total / limit);
+  const { refreshed, changed, diffs } = await refreshAllContributors();
+  const contributors = await getContributors();
 
   await recordAuditLog({
-    action: "recheck.batch",
+    action: "recheck.batch.queued",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
-    metadata: { refreshed: count },
-  });
-
-  return NextResponse.json({
-    refreshed: count,
-    contributors,
-    pagination: {
-      page,
-      limit,
-      total,
-      pages,
-      hasNextPage: page < pages,
-      hasPrevPage: page > 1,
+    metadata: {
+      refreshed,
+      changed,
+      diffs: diffs.filter((diff) => diff.changed),
     },
   });
+
+  return NextResponse.json({ refreshed, contributors });
 }
