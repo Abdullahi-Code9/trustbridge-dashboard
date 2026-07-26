@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Mail } from "lucide-react";
 
 import {
   ContributorTable,
@@ -80,6 +80,19 @@ export default function DashboardPage() {
     },
   });
 
+  const emailNudgeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/notifications/email-nudge", {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Email nudge failed");
+      return (await response.json()) as {
+        sentCount: number;
+        totalNotReady: number;
+      };
+    },
+  });
+
   const sorobanQuery = useQuery({
     queryKey: ["soroban-events"],
     queryFn: async () => {
@@ -111,18 +124,33 @@ export default function DashboardPage() {
             pulls fresh data from Horizon.
           </p>
         </div>
-        <Button
-          variant="stellar"
-          onClick={() => recheckMutation.mutate()}
-          disabled={recheckMutation.isPending}
-        >
-          {recheckMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Re-check all
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="stellar"
+            onClick={() => recheckMutation.mutate()}
+            disabled={recheckMutation.isPending}
+          >
+            {recheckMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Re-check all
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => emailNudgeMutation.mutate()}
+            disabled={emailNudgeMutation.isPending}
+            title="Send email nudges to maintainers about not-ready contributors"
+          >
+            {emailNudgeMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Mail className="h-4 w-4" />
+            )}
+            Email nudge
+          </Button>
+        </div>
       </div>
 
       {networkQuery.data && (
