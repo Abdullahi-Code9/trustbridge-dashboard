@@ -90,6 +90,52 @@ interface RecheckOutcome {
 }
 
 /**
+ * Cursor-paginated contributor query
+ * @param cursor Base64-encoded registration ID for pagination
+ * @param limit Number of results (1-100, default 50)
+ */
+export async function getContributorsPaginated(
+  cursor?: string,
+  limit: number = 50
+): Promise<{
+  contributors: ContributorRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}> {
+  const { encodeCursor, decodeCursor } = await import("@/lib/cursor-pagination");
+
+  const decodedCursor = cursor ? decodeCursor(cursor) : null;
+  const normalizedLimit = Math.min(Math.max(limit, 1), 100);
+
+  // Fetch normalizedLimit + 1 to determine if there are more records
+  const registrations = await prisma.registration.findMany({
+    include: {
+      user: {
+        select: { githubUsername: true },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    ...(decodedCursor && {
+      skip: 1, // Skip the cursor record itself
+      cursor: { id: decodedCursor },
+    }),
+    take: normalizedLimit + 1,
+  });
+
+  const hasMore = registrations.length > normalizedLimit;
+  const pageData = registrations.slice(0, normalizedLimit);
+  const nextCursor = hasMore
+    ? encodeCursor(pageData[pageData.length - 1].id)
+    : null;
+
+  return {
+    contributors: pageData.map(toContributorRow),
+    nextCursor,
+    hasMore,
+  };
+}
+
+/**
  * Re-run the Horizon check for a single registration and persist the result.
  * Shared by the single- and batch-recheck flows. Captures the readiness
  * before and after the check so callers can audit what actually changed,
