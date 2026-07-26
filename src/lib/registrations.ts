@@ -1,19 +1,45 @@
 import "server-only";
 
-import type { Registration, DisputeProof, DisputeStatus } from "@prisma/client";
-import { format } from "date-fns";
-
 import { prisma } from "@/lib/prisma";
+import {
+  buildWalletProofInfo,
+  buildHorizonDebugInfo,
+} from "@/lib/registration-insights";
 import { computeReadiness, computeVerified } from "@/lib/readiness";
 import { buildDashboardStats } from "@/lib/stats";
 import type { ContributorRow, DashboardStats, ReadinessStatus } from "@/types";
 
-type RegistrationWithUser = Registration & {
+type RegistrationRow = Awaited<
+  ReturnType<typeof prisma.registration.findUnique>
+>;
+type RegistrationWithUser = NonNullable<
+  Awaited<
+    ReturnType<
+      typeof prisma.registration.findUnique<{
+        include: { user: { select: { githubUsername: true } } };
+      }>
+    >
+  >
+>;
+
+function isRegistrationRow(row: RegistrationRow): row is NonNullable<RegistrationRow> {
+  return row !== null;
+}
+
+type PersistedRegistration = NonNullable<
+  Awaited<
+    ReturnType<
+      typeof prisma.registration.findFirst
+    >
+  >
+>;
+
+type RegistrationWithUserRow = PersistedRegistration & {
   user: { githubUsername: string };
 };
 
 /** Readiness for any persisted registration row (with or without its user join). */
-function readinessOf(row: Registration): ReadinessStatus {
+function readinessOf(row: PersistedRegistration): ReadinessStatus {
   return computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
     authorized: row.trustlineAuthorized,
     spendableBalance: row.spendableXlmBalance,
@@ -21,7 +47,7 @@ function readinessOf(row: Registration): ReadinessStatus {
 }
 
 /** Map a persisted registration (+ user) to a serializable contributor row. */
-export function toContributorRow(row: RegistrationWithUser): ContributorRow {
+export function toContributorRow(row: RegistrationWithUserRow): ContributorRow {
   return {
     id: row.id,
     githubUsername: row.user.githubUsername,
@@ -38,6 +64,19 @@ export function toContributorRow(row: RegistrationWithUser): ContributorRow {
     spendableXlmBalance: row.spendableXlmBalance,
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
     readiness: readinessOf(row),
+    walletProof: buildWalletProofInfo(
+      row.stellarAddress,
+      row.user.githubUsername
+    ),
+    horizonDebug: buildHorizonDebugInfo({
+      funded: row.funded,
+      trustlineReady: row.trustlineReady,
+      trustlineAuthorized: row.trustlineAuthorized,
+      readiness: readinessOf(row),
+      xlmBalance: row.xlmBalance,
+      spendableXlmBalance: row.spendableXlmBalance,
+      lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
+    }),
   };
 }
 
@@ -155,7 +194,7 @@ export async function getContributorsPaginated(
  * rather than just the post-recheck state.
  */
 async function recheckRegistration(
-  registration: Registration
+  registration: PersistedRegistration
 ): Promise<RecheckOutcome> {
   const previousReadiness = readinessOf(registration);
 

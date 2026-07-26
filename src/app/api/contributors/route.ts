@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireMaintainerSession } from "@/lib/api-auth";
+import { refreshMaintainerSession, requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
@@ -9,7 +9,13 @@ import type { ReadinessStatus } from "@/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const VALID_READINESS_FILTERS = new Set<ReadinessStatus>([
+  "ready",
+  "low_reserve",
+  "not_ready",
+]);
+
+export async function GET(request: NextRequest) {
   if (!(await refreshMaintainerSession())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -29,7 +35,7 @@ export async function GET() {
     );
   }
 
-  const allContributors = await getContributors();
+  const { contributors: allContributors, total } = await getContributors();
 
   const contributors =
     readinessParam !== null
@@ -38,7 +44,7 @@ export async function GET() {
 
   return NextResponse.json({
     contributors,
-    total: allContributors.length,
+    total,
     filtered: contributors.length,
     ...(readinessParam !== null ? { readiness: readinessParam } : {}),
   });
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { refreshed, changed, diffs } = await refreshAllContributors();
-  const contributors = await getContributors();
+  const { contributors, total } = await getContributors();
 
   await recordAuditLog({
     action: "recheck.batch.queued",
@@ -67,5 +73,5 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ refreshed, contributors });
+  return NextResponse.json({ refreshed, changed, contributors, total });
 }

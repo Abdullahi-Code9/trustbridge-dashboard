@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { GET } from "@/app/api/metrics/route";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/api-auth", () => ({
+  requireMaintainerSession: vi.fn(),
 }));
 
 vi.mock("@/lib/registrations", () => ({
@@ -13,7 +13,7 @@ vi.mock("@/lib/audit", () => ({
   getRecentAuditLog: vi.fn(),
 }));
 
-import { getServerSession } from "next-auth";
+import { requireMaintainerSession } from "@/lib/api-auth";
 import { getContributors } from "@/lib/registrations";
 import { getRecentAuditLog } from "@/lib/audit";
 import type { ContributorRow } from "@/types";
@@ -60,7 +60,7 @@ function makeAuditEntry(action: string): AuditLogEntry {
 
 describe("GET /api/metrics", () => {
   it("returns 403 for an unauthenticated request", async () => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    vi.mocked(requireMaintainerSession).mockResolvedValue(null);
 
     const res = await GET();
     expect(res.status).toBe(403);
@@ -69,25 +69,26 @@ describe("GET /api/metrics", () => {
   });
 
   it("returns 403 for a non-maintainer session", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "user-1", isMaintainer: false },
-    } as any);
+    vi.mocked(requireMaintainerSession).mockResolvedValue(null);
 
     const res = await GET();
     expect(res.status).toBe(403);
   });
 
   it("returns 200 with correct contributor counts for a maintainer", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(requireMaintainerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
 
-    vi.mocked(getContributors).mockResolvedValue([
-      makeContributor("a", "ready"),
-      makeContributor("b", "ready"),
-      makeContributor("c", "low_reserve"),
-      makeContributor("d", "not_ready"),
-    ]);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: [
+        makeContributor("a", "ready"),
+        makeContributor("b", "ready"),
+        makeContributor("c", "low_reserve"),
+        makeContributor("d", "not_ready"),
+      ],
+      total: 4,
+    });
 
     vi.mocked(getRecentAuditLog).mockResolvedValue([
       makeAuditEntry("recheck.single"),
@@ -109,10 +110,10 @@ describe("GET /api/metrics", () => {
   });
 
   it("returns audit summary grouped by action", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(requireMaintainerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
-    vi.mocked(getContributors).mockResolvedValue([]);
+    vi.mocked(getContributors).mockResolvedValue({ contributors: [], total: 0 });
     vi.mocked(getRecentAuditLog).mockResolvedValue([
       makeAuditEntry("recheck.single"),
       makeAuditEntry("recheck.single"),
@@ -129,10 +130,10 @@ describe("GET /api/metrics", () => {
   });
 
   it("returns null latestAt when there are no audit entries", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(requireMaintainerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
-    vi.mocked(getContributors).mockResolvedValue([]);
+    vi.mocked(getContributors).mockResolvedValue({ contributors: [], total: 0 });
     vi.mocked(getRecentAuditLog).mockResolvedValue([]);
 
     const res = await GET();
@@ -141,10 +142,10 @@ describe("GET /api/metrics", () => {
   });
 
   it("includes operational config from environment variables", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(requireMaintainerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
-    vi.mocked(getContributors).mockResolvedValue([]);
+    vi.mocked(getContributors).mockResolvedValue({ contributors: [], total: 0 });
     vi.mocked(getRecentAuditLog).mockResolvedValue([]);
 
     process.env.RATE_LIMIT_MAX_REQUESTS = "20";
@@ -160,10 +161,10 @@ describe("GET /api/metrics", () => {
   });
 
   it("reports sorobanContractConfigured as false when SOROBAN_CONTRACT_ID is unset", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(requireMaintainerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
-    vi.mocked(getContributors).mockResolvedValue([]);
+    vi.mocked(getContributors).mockResolvedValue({ contributors: [], total: 0 });
     vi.mocked(getRecentAuditLog).mockResolvedValue([]);
 
     delete process.env.SOROBAN_CONTRACT_ID;

@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowUpDown, Download, Loader2, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import React, { useId, useMemo, useState } from "react";
+import {
+  ArrowUpDown,
+  Download,
+  Loader2,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
@@ -18,9 +25,19 @@ import {
   type ContributorSortKey,
 } from "@/lib/contributors";
 import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
+import {
+  buildWalletProofInfo,
+  buildHorizonDebugInfo,
+} from "@/lib/registration-insights";
 import { buildStalenessSummary } from "@/lib/stale-export";
 import { getRowAccent } from "@/lib/readiness";
-import { cn, formatGithubHandle, formatRelativeTime, formatXlmBalance, shortenAddress } from "@/lib/utils";
+import {
+  cn,
+  formatGithubHandle,
+  formatRelativeTime,
+  formatXlmBalance,
+  shortenAddress,
+} from "@/lib/utils";
 import type { ContributorRow } from "@/types";
 
 type FilterOption = ContributorFilter;
@@ -29,11 +46,134 @@ type SortKey = ContributorSortKey;
 interface ContributorTableProps {
   contributors: ContributorRow[];
   onExport?: () => void;
-  /** Re-check a single contributor via Horizon (maintainer action). */
   onRecheck?: (id: string) => void;
-  /** Id of the contributor currently being re-checked, if any. */
   recheckingId?: string | null;
   className?: string;
+}
+
+function ContributorDebugPanel({ row }: { row: ContributorRow }) {
+  const horizonDebug =
+    row.horizonDebug ??
+    buildHorizonDebugInfo({
+      funded: row.funded,
+      trustlineReady: row.trustlineReady,
+      trustlineAuthorized: row.trustlineAuthorized,
+      readiness: row.readiness,
+      xlmBalance: row.xlmBalance,
+      spendableXlmBalance: row.spendableXlmBalance,
+      lastCheckedAt: row.lastCheckedAt,
+    });
+  const walletProof =
+    row.walletProof ?? buildWalletProofInfo(row.stellarAddress, row.githubUsername);
+
+  return (
+    <details className="rounded-lg border bg-muted/30 p-3 text-left">
+      <summary className="cursor-pointer list-none text-sm font-medium">
+        Horizon debug
+      </summary>
+
+      <div className="mt-3 space-y-3 text-xs">
+        <div>
+          <p className="font-medium text-foreground">{horizonDebug.summary}</p>
+          <p className="mt-1 text-muted-foreground">{horizonDebug.nextAction}</p>
+        </div>
+
+        {horizonDebug.warnings.length > 0 && (
+          <ul className="space-y-1 text-amber-700 dark:text-amber-300">
+            {horizonDebug.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        )}
+
+        <dl className="grid gap-2 sm:grid-cols-2">
+          {horizonDebug.checkpoints.map((checkpoint) => (
+            <div key={checkpoint.label}>
+              <dt className="text-muted-foreground">{checkpoint.label}</dt>
+              <dd className="font-medium text-foreground">{checkpoint.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div className="space-y-2">
+          <p className="font-medium text-foreground">Freighter proof challenge</p>
+          <pre className="overflow-x-auto rounded-md border bg-background p-2 whitespace-pre-wrap">
+            {walletProof.challenge}
+          </pre>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function MobileContributorCard({
+  row,
+  onRecheck,
+  recheckingId,
+}: {
+  row: ContributorRow;
+  onRecheck?: (id: string) => void;
+  recheckingId?: string | null;
+}) {
+  return (
+    <article className={cn("rounded-xl border bg-card p-4", getRowAccent(row.readiness))}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-semibold">{formatGithubHandle(row.githubUsername)}</h3>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {row.stellarAddress}
+          </p>
+        </div>
+        <TrustlineStatusBadge status={row.readiness} />
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <dt className="text-muted-foreground">Verified</dt>
+          <dd className="mt-1">
+            <VerifiedBadge verified={row.verified} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">XLM</dt>
+          <dd className="mt-1 font-medium">{formatXlmBalance(row.xlmBalance)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Spendable XLM</dt>
+          <dd className="mt-1 font-medium">
+            {formatXlmBalance(row.spendableXlmBalance)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Last checked</dt>
+          <dd className="mt-1 font-medium">{formatRelativeTime(row.lastCheckedAt)}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-4">
+        <ContributorDebugPanel row={row} />
+      </div>
+
+      {onRecheck && (
+        <div className="mt-4">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onRecheck(row.id)}
+            disabled={recheckingId === row.id}
+            aria-label={`Re-check ${row.githubUsername} via Horizon`}
+          >
+            {recheckingId === row.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Re-check
+          </Button>
+        </div>
+      )}
+    </article>
+  );
 }
 
 export function ContributorTable({
@@ -43,12 +183,14 @@ export function ContributorTable({
   recheckingId,
   className,
 }: ContributorTableProps) {
+  const columnPickerId = useId();
+  const searchInputId = useId();
   const [filter, setFilter] = useState<FilterOption>("all");
   const [sortKey, setSortKey] = useState<SortKey>("githubUsername");
   const [sortAsc, setSortAsc] = useState(true);
   const [search, setSearch] = useState("");
   const [visibleColumns, setVisibleColumns] = useState<Set<ContributorColumnKey>>(
-    defaultVisibleColumns
+    () => defaultVisibleColumns()
   );
   const [showColumnPicker, setShowColumnPicker] = useState(false);
 
@@ -65,11 +207,11 @@ export function ContributorTable({
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortKey(key);
-      setSortAsc(true);
+      setSortAsc((current) => !current);
+      return;
     }
+    setSortKey(key);
+    setSortAsc(true);
   }
 
   function toggleColumn(key: ContributorColumnKey) {
@@ -84,17 +226,33 @@ export function ContributorTable({
     });
   }
 
-  const isVisible = (key: ContributorColumnKey) => visibleColumns.has(key);
+  function getAriaSort(key: SortKey): "ascending" | "descending" | "none" {
+    if (sortKey !== key) return "none";
+    return sortAsc ? "ascending" : "descending";
+  }
 
-  /** Total number of rendered data columns (not counting the Actions column). */
+  function isVisible(key: ContributorColumnKey) {
+    return visibleColumns.has(key);
+  }
+
   const visibleCount = visibleColumns.size;
+  const emptyStateColSpan = visibleCount + 1 + (onRecheck ? 1 : 0);
 
-  function SortHeader({ sortable, label }: { sortable: SortKey; label: string }) {
+  function SortHeader({
+    sortable,
+    label,
+  }: {
+    sortable: SortKey;
+    label: string;
+  }) {
+    const direction = getAriaSort(sortable);
+
     return (
       <button
         type="button"
         className="inline-flex items-center gap-1 hover:text-stellar-cyan"
         onClick={() => toggleSort(sortable)}
+        aria-label={`${label}, sort ${direction === "ascending" ? "descending" : "ascending"}`}
       >
         {label}
         <ArrowUpDown className="h-3.5 w-3.5" />
@@ -104,28 +262,30 @@ export function ContributorTable({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {/* ── Toolbar ─────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="relative min-w-[220px] max-w-sm flex-1">
+          <label htmlFor={searchInputId} className="sr-only">
+            Search contributors by GitHub username or Stellar address
+          </label>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            id={searchInputId}
             type="search"
-            placeholder="Search by username or address…"
+            placeholder="Search by username or address"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8"
           />
         </div>
 
-        {/* Status filters */}
-        <div className="flex flex-wrap gap-2">
+        <fieldset className="flex flex-wrap gap-2">
+          <legend className="sr-only">Filter contributors by readiness</legend>
           {(
             [
               ["all", "All"],
-              ["ready", "✅ Ready"],
-              ["low_reserve", "⚠️ Low reserve"],
-              ["needs_attention", "❌ Needs attention"],
+              ["ready", "Ready"],
+              ["low_reserve", "Low reserve"],
+              ["needs_attention", "Needs attention"],
             ] as const
           ).map(([value, label]) => (
             <Button
@@ -133,25 +293,24 @@ export function ContributorTable({
               size="sm"
               variant={filter === value ? "stellar" : "outline"}
               onClick={() => setFilter(value)}
+              aria-pressed={filter === value}
             >
               {label}
             </Button>
           ))}
-        </div>
+        </fieldset>
 
-        {/* Column picker trigger */}
         <Button
           size="sm"
           variant="outline"
-          onClick={() => setShowColumnPicker((v) => !v)}
+          onClick={() => setShowColumnPicker((current) => !current)}
           aria-pressed={showColumnPicker}
-          title="Toggle column visibility"
+          aria-controls={columnPickerId}
         >
           <SlidersHorizontal className="h-4 w-4" />
           Columns
         </Button>
 
-        {/* Export */}
         {onExport && (
           <Button
             size="sm"
@@ -165,84 +324,133 @@ export function ContributorTable({
         )}
       </div>
 
-      {/* ── Column picker panel ─────────────────────────────────── */}
       {showColumnPicker && (
-        <div className="rounded-lg border bg-card px-4 py-3">
-          <p className="mb-2 text-sm font-medium text-muted-foreground">
-            Toggle columns
-          </p>
-          <div className="flex flex-wrap gap-2">
+        <fieldset id={columnPickerId} className="rounded-lg border bg-card px-4 py-3">
+          <legend className="mb-2 text-sm font-medium text-muted-foreground">
+            Toggle visible columns
+          </legend>
+          <div className="flex flex-wrap gap-3">
             {CONTRIBUTOR_COLUMNS.map((col) => (
-              <button
+              <label
                 key={col.key}
-                type="button"
-                onClick={() => toggleColumn(col.key)}
                 className={cn(
-                  "rounded-md border px-3 py-1 text-xs font-medium transition-colors",
+                  "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
                   visibleColumns.has(col.key)
                     ? "border-stellar-purple bg-stellar-purple/10 text-stellar-purple"
                     : "border-muted bg-muted/30 text-muted-foreground"
                 )}
               >
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.has(col.key)}
+                  onChange={() => toggleColumn(col.key)}
+                />
                 {col.label}
-              </button>
+              </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       )}
 
-      {/* ── Stale data warning ───────────────────────────────────── */}
       {staleSummary.stale && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          <p className="font-medium">⚠️ Stale data detected</p>
+          <p className="font-medium">Stale data detected</p>
           <p className="mt-1">{staleSummary.warning}</p>
         </div>
       )}
 
-      {/* ── Result summary ───────────────────────────────────────── */}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground" aria-live="polite">
         {filtered.length === contributors.length
           ? `${contributors.length} contributor${contributors.length !== 1 ? "s" : ""}`
           : `${filtered.length} of ${contributors.length} contributors`}
         {search && ` matching "${search}"`}
       </p>
 
-      {/* ── Table ────────────────────────────────────────────────── */}
-      <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full min-w-[540px] text-sm">
+      <div className="space-y-4 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+            {search
+              ? `No contributors match "${search}".`
+              : "No contributors match this filter."}
+          </div>
+        ) : (
+          filtered.map((row) => (
+            <MobileContributorCard
+              key={row.id}
+              row={row}
+              onRecheck={onRecheck}
+              recheckingId={recheckingId}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border md:block">
+        <table className="w-full min-w-[880px] text-sm">
+          <caption className="sr-only">
+            Contributor payout readiness table with per-row Horizon debug details
+            and Freighter proof guidance.
+          </caption>
           <thead className="bg-muted/50">
             <tr className="text-left">
               {isVisible("githubUsername") && (
-                <th className="px-4 py-3 font-medium">
+                <th
+                  className="px-4 py-3 font-medium"
+                  scope="col"
+                  aria-sort={getAriaSort("githubUsername")}
+                >
                   <SortHeader sortable="githubUsername" label="GitHub" />
                 </th>
               )}
               {isVisible("stellarAddress") && (
-                <th className="px-4 py-3 font-medium">Stellar address</th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Stellar address
+                </th>
               )}
               {isVisible("readiness") && (
-                <th className="px-4 py-3 font-medium">
+                <th
+                  className="px-4 py-3 font-medium"
+                  scope="col"
+                  aria-sort={getAriaSort("readiness")}
+                >
                   <SortHeader sortable="readiness" label="Status" />
                 </th>
               )}
               {isVisible("verified") && (
-                <th className="px-4 py-3 font-medium">Verified</th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Verified
+                </th>
               )}
               {isVisible("xlmBalance") && (
-                <th className="px-4 py-3 font-medium">
+                <th
+                  className="px-4 py-3 font-medium"
+                  scope="col"
+                  aria-sort={getAriaSort("xlmBalance")}
+                >
                   <SortHeader sortable="xlmBalance" label="XLM" />
                 </th>
               )}
               {isVisible("spendableXlmBalance") && (
-                <th className="px-4 py-3 font-medium">Spendable XLM</th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Spendable XLM
+                </th>
               )}
               {isVisible("lastCheckedAt") && (
-                <th className="px-4 py-3 font-medium">
+                <th
+                  className="px-4 py-3 font-medium"
+                  scope="col"
+                  aria-sort={getAriaSort("lastCheckedAt")}
+                >
                   <SortHeader sortable="lastCheckedAt" label="Last checked" />
                 </th>
               )}
+              <th className="px-4 py-3 font-medium" scope="col">
+                Diagnostics
+              </th>
               {onRecheck && (
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
+                <th className="px-4 py-3 text-right font-medium" scope="col">
+                  Actions
+                </th>
               )}
             </tr>
           </thead>
@@ -250,7 +458,7 @@ export function ContributorTable({
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={visibleCount + (onRecheck ? 1 : 0)}
+                  colSpan={emptyStateColSpan}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   {search
@@ -262,18 +470,15 @@ export function ContributorTable({
               filtered.map((row) => (
                 <tr
                   key={row.id}
-                  className={cn("border-t bg-card/50", getRowAccent(row.readiness))}
+                  className={cn("border-t bg-card/50 align-top", getRowAccent(row.readiness))}
                 >
                   {isVisible("githubUsername") && (
-                    <td className="px-4 py-3 font-medium">
+                    <th className="px-4 py-3 font-medium" scope="row">
                       {formatGithubHandle(row.githubUsername)}
-                    </td>
+                    </th>
                   )}
                   {isVisible("stellarAddress") && (
-                    <td
-                      className="px-4 py-3 font-mono text-xs"
-                      title={row.stellarAddress}
-                    >
+                    <td className="px-4 py-3 font-mono text-xs" title={row.stellarAddress}>
                       {shortenAddress(row.stellarAddress)}
                     </td>
                   )}
@@ -300,6 +505,9 @@ export function ContributorTable({
                       {formatRelativeTime(row.lastCheckedAt)}
                     </td>
                   )}
+                  <td className="min-w-[280px] px-4 py-3">
+                    <ContributorDebugPanel row={row} />
+                  </td>
                   {onRecheck && (
                     <td className="px-4 py-3 text-right">
                       <Button
@@ -307,7 +515,7 @@ export function ContributorTable({
                         variant="outline"
                         onClick={() => onRecheck(row.id)}
                         disabled={recheckingId === row.id}
-                        title="Re-check this contributor via Horizon"
+                        aria-label={`Re-check ${row.githubUsername} via Horizon`}
                       >
                         {recheckingId === row.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -328,7 +536,10 @@ export function ContributorTable({
   );
 }
 
-export function exportContributorsCsv(contributors: ContributorRow[], force = false): boolean {
+export function exportContributorsCsv(
+  contributors: ContributorRow[],
+  force = false
+): boolean {
   const summary = buildStalenessSummary(contributors);
 
   if (summary.stale && !force) {
@@ -349,22 +560,44 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     "xlm_balance",
     "last_checked_at",
     "spendable_xlm_balance",
+    "horizon_debug_summary",
+    "horizon_next_action",
+    "freighter_proof_challenge",
   ];
 
-  const rows = contributors.map((row) => [
-    row.githubUsername,
-    row.stellarAddress,
-    row.readiness,
-    row.funded,
-    row.trustlineReady,
-    row.trustlineAuthorized,
-    row.verified,
-    row.xlmBalance,
-    row.lastCheckedAt ?? "",
-    row.spendableXlmBalance,
-  ]);
+  const normalizedRows = contributors.map((row) => {
+    const horizonDebug =
+      row.horizonDebug ??
+      buildHorizonDebugInfo({
+        funded: row.funded,
+        trustlineReady: row.trustlineReady,
+        trustlineAuthorized: row.trustlineAuthorized,
+        readiness: row.readiness,
+        xlmBalance: row.xlmBalance,
+        spendableXlmBalance: row.spendableXlmBalance,
+        lastCheckedAt: row.lastCheckedAt,
+      });
+    const walletProof =
+      row.walletProof ?? buildWalletProofInfo(row.stellarAddress, row.githubUsername);
 
-  const csv = buildCsv(headers, rows);
+    return [
+      row.githubUsername,
+      row.stellarAddress,
+      row.readiness,
+      row.funded,
+      row.trustlineReady,
+      row.trustlineAuthorized,
+      row.verified,
+      row.xlmBalance,
+      row.lastCheckedAt ?? "",
+      row.spendableXlmBalance,
+      horizonDebug.summary,
+      horizonDebug.nextAction,
+      walletProof.challenge,
+    ];
+  });
+
+  const csv = buildCsv(headers, normalizedRows);
   downloadCsv(buildCsvFilename("trustbridge-wave"), csv);
   return true;
 }

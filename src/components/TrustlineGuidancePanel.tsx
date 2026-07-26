@@ -52,6 +52,10 @@ export function TrustlineGuidancePanel() {
             .
           </li>
           <li>Paste your public G-address below — we validate live via Horizon.</li>
+          <li>
+            Copy the Freighter ownership proof challenge and sign it in your
+            wallet if a maintainer asks for proof of control.
+          </li>
           <li>Submit once the readiness badge shows ✅ Ready.</li>
         </ol>
 

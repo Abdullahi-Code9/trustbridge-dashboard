@@ -8,8 +8,8 @@ import {
   filterContributors,
   searchContributors,
   sortContributors,
-  type ContributorRow,
 } from "@/lib/contributors";
+import type { ContributorRow } from "@/types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 

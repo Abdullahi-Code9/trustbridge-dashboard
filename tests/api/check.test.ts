@@ -139,20 +139,14 @@ describe("POST /api/check", () => {
 
   it("returns 200 with the Horizon result on cache miss (first call)", async () => {
     vi.mocked(checkStellarAddress).mockResolvedValue(readyResult);
-  it("returns 200 with mocked result (same-origin)", async () => {
-    vi.mocked(checkStellarAddress).mockResolvedValue({
-      funded: true,
-      trustline: true,
-      xlm_balance: "2",
-      readiness: "ready",
-      errors: [],
-    } as any);
 
-    const r = post({ address: "GBSX" });
+    const r = post({ address: "GABCDEF" });
     const res = await POST(r);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.funded).toBe(true);
+    expect(json.readiness).toBe("ready");
+    expect(checkStellarAddress).toHaveBeenCalledTimes(1);
   });
 
   it("returns 200 with not-ready state when circuit breaker is open", async () => {

@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/contributors/route";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/api-auth", () => ({
+  refreshMaintainerSession: vi.fn(),
+  requireMaintainerSession: vi.fn(),
 }));
 
 vi.mock("@/lib/registrations", () => ({
@@ -15,7 +16,10 @@ vi.mock("@/lib/audit", () => ({
   recordAuditLog: vi.fn(),
 }));
 
-import { getServerSession } from "next-auth";
+import {
+  refreshMaintainerSession,
+  requireMaintainerSession,
+} from "@/lib/api-auth";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
 import type { ContributorRow } from "@/types";
 
@@ -71,7 +75,10 @@ function post(headers?: Record<string, string>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(getContributors).mockResolvedValue(allContributors);
+  vi.mocked(getContributors).mockResolvedValue({
+    contributors: allContributors,
+    total: allContributors.length,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -79,15 +86,13 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe("GET /api/contributors — auth", () => {
   it("returns 403 when unauthenticated", async () => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    vi.mocked(refreshMaintainerSession).mockResolvedValue(null);
     const res = await GET(get("http://localhost:3000/api/contributors"));
     expect(res.status).toBe(403);
   });
 
   it("returns 403 when authenticated but not a maintainer", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "u-1", isMaintainer: false },
-    } as never);
+    vi.mocked(refreshMaintainerSession).mockResolvedValue(null);
     const res = await GET(get("http://localhost:3000/api/contributors"));
     expect(res.status).toBe(403);
   });
@@ -98,7 +103,7 @@ describe("GET /api/contributors — auth", () => {
 // ---------------------------------------------------------------------------
 describe("GET /api/contributors — no filter", () => {
   beforeEach(() => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(refreshMaintainerSession).mockResolvedValue({
       user: { id: "u-1", isMaintainer: true },
     } as never);
   });
@@ -119,7 +124,7 @@ describe("GET /api/contributors — no filter", () => {
 // ---------------------------------------------------------------------------
 describe("GET /api/contributors — readiness filter", () => {
   beforeEach(() => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(refreshMaintainerSession).mockResolvedValue({
       user: { id: "u-1", isMaintainer: true },
     } as never);
   });
@@ -187,9 +192,10 @@ describe("GET /api/contributors — readiness filter", () => {
   });
 
   it("returns empty list when no contributors match the filter", async () => {
-    vi.mocked(getContributors).mockResolvedValue([
-      makeContributor("1", "ready"),
-    ]);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: [makeContributor("1", "ready")],
+      total: 1,
+    });
     const res = await GET(
       get("http://localhost:3000/api/contributors?readiness=low_reserve")
     );
@@ -201,7 +207,10 @@ describe("GET /api/contributors — readiness filter", () => {
   });
 
   it("returns total=0 and filtered=0 when no contributors exist", async () => {
-    vi.mocked(getContributors).mockResolvedValue([]);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: [],
+      total: 0,
+    });
     const res = await GET(
       get("http://localhost:3000/api/contributors?readiness=low_reserve")
     );
@@ -225,13 +234,11 @@ describe("POST /api/contributors", () => {
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toBe("Invalid request origin");
-    expect(getServerSession).not.toHaveBeenCalled();
+    expect(requireMaintainerSession).not.toHaveBeenCalled();
   });
 
   it("returns 403 (auth) for same-origin non-maintainer", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "user-1", isMaintainer: false },
-    } as never);
+    vi.mocked(requireMaintainerSession).mockResolvedValue(null);
     const r = post();
     const res = await POST(r);
     expect(res.status).toBe(403);
@@ -241,7 +248,7 @@ describe("POST /api/contributors", () => {
   });
 
   it("returns 200 for same-origin maintainer", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(requireMaintainerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
     } as any);
     vi.mocked(refreshAllContributors).mockResolvedValue({
@@ -249,43 +256,18 @@ describe("POST /api/contributors", () => {
       changed: 0,
       diffs: [],
     });
-    vi.mocked(getContributors).mockResolvedValue([] as any);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: allContributors,
+      total: allContributors.length,
+    });
 
     const r = post();
     const res = await POST(r);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.refreshed).toBe(3);
-    expect(json.pagination).toBeDefined();
-    expect(json.pagination.page).toBe(1);
-    expect(json.pagination.total).toBe(3);
-  });
-
-  it("returns paginated results with custom page and limit", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "user-1", isMaintainer: true },
-    } as any);
-    vi.mocked(refreshAllContributors).mockResolvedValue(150);
-    vi.mocked(getContributors).mockResolvedValue({
-      contributors: Array.from({ length: 25 }),
-      total: 150,
-    } as any);
-
-    const r = new NextRequest(
-      "http://localhost:3000/api/contributors?page=2&limit=25",
-      {
-        method: "POST",
-        headers: sameOriginHeaders,
-      }
-    );
-    const res = await POST(r);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.pagination.page).toBe(2);
-    expect(json.pagination.limit).toBe(25);
-    expect(json.pagination.total).toBe(150);
-    expect(json.pagination.pages).toBe(6);
-    expect(json.pagination.hasNextPage).toBe(true);
-    expect(json.pagination.hasPrevPage).toBe(true);
+    expect(json.changed).toBe(0);
+    expect(json.total).toBe(allContributors.length);
+    expect(json.contributors).toHaveLength(allContributors.length);
   });
 });

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 import { AddressInput } from "@/components/AddressInput";
+import { FreighterProofCard } from "@/components/FreighterProofCard";
 import { OutreachTemplateGenerator } from "@/components/OutreachTemplateGenerator";
 import { TrustlineGuidancePanel } from "@/components/TrustlineGuidancePanel";
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
@@ -18,11 +19,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { buildWalletProofInfo } from "@/lib/registration-insights";
+import type { HorizonDebugInfo, WalletProofInfo } from "@/types";
 
 interface RegistrationResponse {
   registration?: {
     stellarAddress: string;
     readiness: "ready" | "low_reserve" | "not_ready";
+    walletProof: WalletProofInfo;
+    horizonDebug: HorizonDebugInfo;
   };
 }
 
@@ -67,6 +72,10 @@ export function RegisterClient() {
 
   const existingAddress =
     existingQuery.data?.registration?.stellarAddress ?? "";
+  const proofAddress = address.trim() || existingAddress;
+  const proof =
+    existingQuery.data?.registration?.walletProof ??
+    buildWalletProofInfo(proofAddress, session?.user?.githubUsername ?? null);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -118,7 +127,8 @@ export function RegisterClient() {
               </CardTitle>
               <CardDescription>
                 Enter your public key (starts with G). Validation runs as you
-                type via Horizon.
+                type via Horizon, and the proof panel shows the exact Freighter
+                challenge maintainers can ask you to sign.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -129,13 +139,16 @@ export function RegisterClient() {
               />
 
               {saveMutation.isError && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm text-destructive" aria-live="polite">
                   {(saveMutation.error as Error).message}
                 </p>
               )}
 
               {saved && (
-                <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                <p
+                  className="text-sm text-emerald-600 dark:text-emerald-400"
+                  aria-live="polite"
+                >
                   Registration saved successfully.
                 </p>
               )}
@@ -158,7 +171,8 @@ export function RegisterClient() {
           </Card>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2">
+          <FreighterProofCard proof={proof} addressReady={Boolean(proofAddress)} />
           <TrustlineGuidancePanel />
         </div>
       </div>

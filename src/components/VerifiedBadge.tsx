@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { BadgeCheck, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
