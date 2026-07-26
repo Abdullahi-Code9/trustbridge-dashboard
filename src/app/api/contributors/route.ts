@@ -9,36 +9,8 @@ import type { ReadinessStatus } from "@/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Valid values for the `?readiness=` query parameter.
- * Passing `low_reserve` returns only contributors whose spendable XLM balance
- * is below the configured minimum — a separate category that helps maintainers
- * triage accounts that would fail a Wave payout for reserve reasons only.
- */
-const VALID_READINESS_FILTERS = new Set<ReadinessStatus>([
-  "ready",
-  "low_reserve",
-  "not_ready",
-]);
-
-/**
- * GET /api/contributors[?readiness=<status>]
- *
- * Returns the contributor list, optionally filtered to a single readiness tier.
- *
- * Query params:
- *   `readiness` — one of `ready | low_reserve | not_ready`.
- *                 Omit to return all contributors.
- *
- * The `low_reserve` filter is the key addition for issue #34: it lets
- * maintainers identify accounts that are funded and have an authorized
- * trustline but don't yet carry enough spendable XLM to cover the minimum
- * reserve, so they can be addressed before a Wave disbursement.
- *
- * Auth: maintainer-only.
- */
-export async function GET(request: NextRequest) {
-  if (!(await requireMaintainerSession())) {
+export async function GET() {
+  if (!(await refreshMaintainerSession())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -81,15 +53,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const count = await refreshAllContributors();
+  const { refreshed, changed, diffs } = await refreshAllContributors();
   const contributors = await getContributors();
 
   await recordAuditLog({
     action: "recheck.batch",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
-    metadata: { refreshed: count },
+    metadata: {
+      refreshed,
+      changed,
+      diffs: diffs.filter((diff) => diff.changed),
+    },
   });
 
-  return NextResponse.json({ refreshed: count, contributors });
+  return NextResponse.json({ refreshed, contributors });
 }

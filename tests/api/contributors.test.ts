@@ -243,9 +243,13 @@ describe("POST /api/contributors", () => {
   it("returns 200 for same-origin maintainer", async () => {
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", isMaintainer: true },
-    } as never);
-    vi.mocked(refreshAllContributors).mockResolvedValue(3);
-    vi.mocked(getContributors).mockResolvedValue([] as never);
+    } as any);
+    vi.mocked(refreshAllContributors).mockResolvedValue({
+      refreshed: 3,
+      changed: 0,
+      diffs: [],
+    });
+    vi.mocked(getContributors).mockResolvedValue([] as any);
 
     const r = post();
     const res = await POST(r);

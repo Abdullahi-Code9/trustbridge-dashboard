@@ -50,6 +50,13 @@ export function getHorizonCircuitBreakerMetrics(): ReturnType<
   return horizonCircuitBreaker.getMetrics();
 }
 
+async function loadAccountFromHorizon(
+  address: string
+): Promise<Horizon.ServerApi.AccountRecord> {
+  const server = getHorizonServer();
+  return server.loadAccount(address);
+}
+
 /** True when the balance line is a trustline for the requested asset. */
 function isMatchingTrustline(
   balance: AccountBalance,
@@ -114,11 +121,9 @@ export async function checkStellarAddress(
     if (cached) return cached;
   }
 
-  const server = getHorizonServer();
-
   try {
     const account = await horizonCircuitBreaker.call(() =>
-      withRetry(() => server.loadAccount(trimmed), {
+      withRetry(() => loadAccountFromHorizon(trimmed), {
         attempts: retries,
         // A missing account (404) will never succeed — fail fast instead of retrying.
         shouldRetry: (error) =>
