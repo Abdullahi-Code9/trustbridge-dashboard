@@ -1,10 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   escapeCsvCell,
   buildCsv,
   buildCsvFilename,
   buildJson,
   buildJsonFilename,
+  downloadCsv,
+  downloadJson,
 } from "@/lib/csv";
 
 describe("CSV helpers", () => {
@@ -49,5 +51,44 @@ describe("JSON helpers", () => {
   it("builds JSON filename with date", () => {
     const date = new Date("2024-06-15");
     expect(buildJsonFilename("wave", date)).toBe("wave-2024-06-15.json");
+  });
+});
+
+describe("Download helpers", () => {
+  beforeEach(() => {
+    global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    global.URL.revokeObjectURL = vi.fn();
+    document.createElement = vi.fn((tag: string) => {
+      if (tag === "a") {
+        return {
+          href: "",
+          download: "",
+          click: vi.fn(),
+        } as unknown as HTMLElement;
+      }
+      return document.createElement(tag);
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("downloads CSV with correct blob type", () => {
+    const createBlobSpy = vi.spyOn(global, "Blob");
+    downloadCsv("test.csv", "a,b\n1,2");
+    expect(createBlobSpy).toHaveBeenCalledWith(
+      ["a,b\n1,2"],
+      expect.objectContaining({ type: "text/csv;charset=utf-8;" })
+    );
+  });
+
+  it("downloads JSON with correct blob type", () => {
+    const createBlobSpy = vi.spyOn(global, "Blob");
+    downloadJson("test.json", '{"a":1}');
+    expect(createBlobSpy).toHaveBeenCalledWith(
+      ['{"a":1}'],
+      expect.objectContaining({ type: "application/json;charset=utf-8;" })
+    );
   });
 });

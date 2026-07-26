@@ -12,7 +12,7 @@ import {
   type ContributorFilter,
   type ContributorSortKey,
 } from "@/lib/contributors";
-import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
+import { buildCsv, buildCsvFilename, buildJson, buildJsonFilename, downloadCsv, downloadJson } from "@/lib/csv";
 import { buildStalenessSummary } from "@/lib/stale-export";
 import { getRowAccent } from "@/lib/readiness";
 import { cn, formatGithubHandle, formatRelativeTime, formatXlmBalance, shortenAddress } from "@/lib/utils";
@@ -83,15 +83,26 @@ export function ContributorTable({
           ))}
         </div>
         {onExport && (
-          <Button
-            size="sm"
-            variant={staleSummary.stale ? "destructive" : "outline"}
-            onClick={onExport}
-            title={staleSummary.warning}
-          >
-            <Download className="h-4 w-4" />
-            {staleSummary.stale ? "Export CSV (stale)" : "Export CSV"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={staleSummary.stale ? "destructive" : "outline"}
+              onClick={onExport}
+              title={staleSummary.warning}
+            >
+              <Download className="h-4 w-4" />
+              {staleSummary.stale ? "Export CSV (stale)" : "Export CSV"}
+            </Button>
+            <Button
+              size="sm"
+              variant={staleSummary.stale ? "destructive" : "outline"}
+              onClick={() => exportContributorsJson(contributors, staleSummary.stale)}
+              title={staleSummary.warning}
+            >
+              <Download className="h-4 w-4" />
+              {staleSummary.stale ? "Export JSON (stale)" : "Export JSON"}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -240,5 +251,46 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
 
   const csv = buildCsv(headers, rows);
   downloadCsv(buildCsvFilename("trustbridge-wave"), csv);
+  return true;
+}
+
+export function exportContributorsJson(contributors: ContributorRow[], force = false): boolean {
+  const summary = buildStalenessSummary(contributors);
+
+  if (summary.stale && !force) {
+    const confirmed = window.confirm(
+      `${summary.warning}\n\nDo you want to export anyway?`
+    );
+    if (!confirmed) return false;
+  }
+
+  const headers = [
+    "github_username",
+    "stellar_address",
+    "readiness",
+    "funded",
+    "trustline",
+    "trustline_authorized",
+    "verified",
+    "xlm_balance",
+    "last_checked_at",
+    "spendable_xlm_balance",
+  ];
+
+  const rows = contributors.map((row) => [
+    row.githubUsername,
+    row.stellarAddress,
+    row.readiness,
+    row.funded,
+    row.trustlineReady,
+    row.trustlineAuthorized,
+    row.verified,
+    row.xlmBalance,
+    row.lastCheckedAt ?? "",
+    row.spendableXlmBalance,
+  ]);
+
+  const json = buildJson(headers, rows);
+  downloadJson(buildJsonFilename("trustbridge-wave"), json);
   return true;
 }
