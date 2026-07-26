@@ -102,6 +102,15 @@ export class CacheStore<T> {
   }
 
   /**
+   * Reset the cache — clears all entries and zeroes all stats.
+   * Alias for `clear()` with a more test-friendly name, matching the
+   * `resetRateLimit()` / `resetCircuitBreaker()` convention used elsewhere.
+   */
+  reset(): void {
+    this.clear();
+  }
+
+  /**
    * Get cache statistics.
    */
   getStats(): {
@@ -138,6 +147,31 @@ export const verificationCache = new CacheStore<unknown>(2 * 60_000); // 2 minut
  * Specific cache for statistics.
  */
 export const statsCache = new CacheStore<unknown>(10 * 60_000); // 10 minutes
+
+/**
+ * Parse the CHECK_CACHE_TTL_MS environment variable.
+ * Falls back to 2 minutes when unset or invalid.
+ * Exposed so tests can verify the default without importing process.env directly.
+ */
+export function parseCheckCacheTtl(): number {
+  const raw = process.env.CHECK_CACHE_TTL_MS;
+  if (!raw) return 2 * 60_000;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2 * 60_000;
+}
+
+/**
+ * Dedicated KV cache for /api/check responses.
+ *
+ * Keyed by `check:<address>:<assetCode>:<assetIssuer>` so the same address
+ * checked against different assets never collides.  TTL is controlled by the
+ * CHECK_CACHE_TTL_MS environment variable (default 2 minutes).
+ *
+ * Kept separate from verificationCache (used internally by horizon.ts) so the
+ * two layers can have independent TTLs and can be invalidated independently in
+ * tests and production flows.
+ */
+export const checkCache = new CacheStore<unknown>(parseCheckCacheTtl());
 
 /**
  * Build cache key from function arguments.
