@@ -138,6 +138,37 @@ Example: if the team URL is `https://github.com/orgs/stellar/teams/dashboard-mai
 - A user who passes the org check but fails the team check is denied and an audit log entry (`maintainer_access_denied_team`) is recorded, visible via `/api/audit`
 - A GitHub API error or rate limit on either check fails closed (`isMaintainer = false`) rather than blocking sign-in
 
+### `CHECK_CACHE_TTL_MS`
+
+Time-to-live, in milliseconds, for entries in the `/api/check` **KV response cache**.
+
+| Value | Behaviour |
+|-------|-----------|
+| Unset / invalid | Falls back to **120 000 ms (2 minutes)** |
+| Any positive integer | Cache entries expire after this many ms |
+
+**How it works:**
+
+`POST /api/check` maintains a dedicated in-process KV cache (`checkCache` in [`src/lib/cache.ts`](../src/lib/cache.ts)) keyed by `check:<address>:<assetCode>:<assetIssuer>`. On a cache hit the route returns the stored result without making a Horizon API call.
+
+- **Transient errors are never cached.** If `checkStellarAddress` returns an error that includes `"temporarily unavailable"` or `"Horizon error:"`, the result is not written to the cache so the next request retries Horizon.
+- **Cache bypass:** callers can force a fresh Horizon check by sending the `X-Cache-Bypass: 1` request header or the `?cache_bypass=1` query parameter. When bypass is active the route also passes `useCache: false` into `checkStellarAddress`, skipping the internal `verificationCache` in `horizon.ts` as well.
+- **Independence from verificationCache:** `checkCache` and `verificationCache` (used inside `horizon.ts`) are separate `CacheStore` instances with independent TTLs. This lets the route-level and library-level caches be invalidated separately — useful when a maintainer batch-rechecks addresses.
+
+Example — aggressive caching for a read-heavy deployment:
+
+```bash
+CHECK_CACHE_TTL_MS=300000  # 5 minutes
+```
+
+Example — effectively disable the route cache (still benefits from horizon.ts internal cache):
+
+```bash
+CHECK_CACHE_TTL_MS=1  # 1 ms ≈ no caching
+```
+
+---
+
 ### `SOROBAN_CONTRACT_ID`
 
 Soroban contract ID the maintainer dashboard's **Soroban event timeline** panel reads events for. Registrations are not yet mirrored to this contract — see the write-through design note below.
