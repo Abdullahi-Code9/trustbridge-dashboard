@@ -1,12 +1,18 @@
 import "server-only";
 
-import type { Registration, DisputeProof, DisputeStatus } from "@prisma/client";
-import { format } from "date-fns";
+import type { Registration } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { computeReadiness, computeVerified } from "@/lib/readiness";
 import { buildDashboardStats } from "@/lib/stats";
+import { CacheStore, statsCache, buildCacheKey, parseStatsCacheTtl } from "@/lib/cache";
 import type { ContributorRow, DashboardStats, ReadinessStatus } from "@/types";
+
+/** Typed view of the shared statsCache for dashboard stats. */
+const typedStatsCache = statsCache as CacheStore<DashboardStats>;
+
+/** Cache key used for the single aggregate stats entry. */
+const STATS_CACHE_KEY = buildCacheKey("stats", "dashboard");
 
 type RegistrationWithUser = Registration & {
   user: { githubUsername: string };
@@ -41,27 +47,51 @@ export function toContributorRow(row: RegistrationWithUser): ContributorRow {
   };
 }
 
+/**
+ * Fetch aggregate dashboard statistics, backed by an in-process cache.
+ *
+ * The TTL is controlled by the `STATS_CACHE_TTL_MS` environment variable
+ * (default 60 s).  Callers that need a guaranteed-fresh result (e.g. after a
+ * batch recheck) should call `invalidateDashboardStatsCache()` first.
+ */
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const registrations = await prisma.registration.findMany({
-    select: {
-      funded: true,
-      trustlineReady: true,
-      trustlineAuthorized: true,
-      xlmBalance: true,
-      spendableXlmBalance: true,
+  return typedStatsCache.getOrCompute(
+    STATS_CACHE_KEY,
+    async () => {
+      const registrations = await prisma.registration.findMany({
+        select: {
+          funded: true,
+          trustlineReady: true,
+          trustlineAuthorized: true,
+          xlmBalance: true,
+          spendableXlmBalance: true,
+        },
+      });
+
+      const totalContributors = registrations.length;
+      const readyCount = registrations.filter(
+        (row) =>
+          computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
+            authorized: row.trustlineAuthorized,
+            spendableBalance: row.spendableXlmBalance,
+          }) === "ready"
+      ).length;
+
+      return buildDashboardStats(totalContributors, readyCount);
     },
-  });
+    parseStatsCacheTtl(),
+  );
+}
 
-  const totalContributors = registrations.length;
-  const readyCount = registrations.filter(
-    (row) =>
-      computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
-        authorized: row.trustlineAuthorized,
-        spendableBalance: row.spendableXlmBalance,
-      }) === "ready"
-  ).length;
-
-  return buildDashboardStats(totalContributors, readyCount);
+/**
+ * Evict the cached dashboard stats so the next call to `getDashboardStats()`
+ * queries the database fresh.
+ *
+ * Call this after any operation that mutates registration readiness data
+ * (e.g. batch recheck, single contributor recheck, new registration).
+ */
+export function invalidateDashboardStatsCache(): void {
+  statsCache.invalidate(STATS_CACHE_KEY);
 }
 
 export async function getContributors(
@@ -175,6 +205,12 @@ async function recheckRegistration(
   });
 
   const newReadiness = readinessOf(updated);
+
+  // Any readiness change invalidates the cached aggregate stats so the next
+  // call to getDashboardStats() reflects the fresh DB state.
+  if (previousReadiness !== newReadiness) {
+    invalidateDashboardStatsCache();
+  }
 
   return {
     registration: updated,

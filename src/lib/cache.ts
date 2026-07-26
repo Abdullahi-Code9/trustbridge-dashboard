@@ -161,6 +161,128 @@ export function parseCheckCacheTtl(): number {
 }
 
 /**
+ * Parse the STATS_CACHE_TTL_MS environment variable.
+ *
+ * Controls how long the in-process `statsCache` retains a
+ * `getDashboardStats()` result AND the `max-age` value emitted in the
+ * `Cache-Control` header on `GET /api/stats` responses.
+ *
+ * Falls back to 60 seconds when unset or invalid.  60 s is deliberately
+ * conservative — long enough to absorb repeated page loads and public CDN
+ * requests, short enough that a new registration appears on the landing page
+ * within a minute.
+ *
+ * Exposed so tests can verify the default without importing process.env directly.
+ */
+export function parseStatsCacheTtl(): number {
+  const raw = process.env.STATS_CACHE_TTL_MS;
+  if (!raw) return 60_000; // 60 seconds
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60_000;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP Cache-Control header builders
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a `Cache-Control` header value for public, read-only API responses
+ * whose data is safe to cache by CDNs and browsers.
+ *
+ * - `public` — intermediary caches (CDNs, proxies) may store the response.
+ * - `max-age` — freshness lifetime in **seconds** (converted from ttlMs).
+ * - `stale-while-revalidate` — CDN/browser may serve a stale copy for an
+ *   extra `swrSeconds` while it fetches a fresh one in the background.
+ *   Defaults to the same duration as `max-age`, doubling the effective
+ *   coverage before a hard miss is needed.
+ *
+ * Usage:
+ * ```ts
+ * headers: { "Cache-Control": buildPublicCacheControl(60_000) }
+ * // → "public, max-age=60, stale-while-revalidate=60"
+ * ```
+ */
+export function buildPublicCacheControl(
+  ttlMs: number,
+  swrMs: number = ttlMs,
+): string {
+  const maxAge = Math.floor(ttlMs / 1000);
+  const swr = Math.floor(swrMs / 1000);
+  return `public, max-age=${maxAge}, stale-while-revalidate=${swr}`;
+}
+
+/**
+ * Build a `Cache-Control` header value for private, authenticated API
+ * responses.  These must not be stored by shared caches (CDNs / proxies) but
+ * may be reused by the requesting client within the freshness window.
+ *
+ * - `private` — only the end-user's browser/client may cache the response.
+ * - `max-age` — freshness lifetime in **seconds** (converted from ttlMs).
+ * - `must-revalidate` — expired entries must not be served stale; the client
+ *   must re-validate with the server.
+ *
+ * Usage:
+ * ```ts
+ * headers: { "Cache-Control": buildPrivateCacheControl(30_000) }
+ * // → "private, max-age=30, must-revalidate"
+ * ```
+ */
+export function buildPrivateCacheControl(ttlMs: number): string {
+  const maxAge = Math.floor(ttlMs / 1000);
+  return `private, max-age=${maxAge}, must-revalidate`;
+}
+
+/**
+ * Build a `Cache-Control` header that prevents all caching.
+ * Used for mutating endpoints and responses that must always be fresh
+ * (e.g. POST /api/register, GET /api/register for the current user's own data).
+ */
+export function buildNoCacheControl(): string {
+  return "no-store, no-cache, must-revalidate";
+}
+
+/**
+ * Build the full set of HTTP cache-related headers for stats API responses.
+ *
+ * Combines:
+ * - `Cache-Control` — public caching directive with stale-while-revalidate.
+ * - `CDN-Cache-Control` — Vercel/Cloudflare-specific override so the CDN edge
+ *   can apply a different (shorter) TTL than the browser.
+ * - `Vary: Accept-Encoding` — ensures compressed and uncompressed responses
+ *   are stored separately.
+ *
+ * @param ttlMs   In-process cache TTL in milliseconds (also used as max-age).
+ * @param swrMs   Stale-while-revalidate window in milliseconds. Defaults to
+ *                half the TTL so CDNs aggressively revalidate.
+ */
+export function buildStatsCacheHeaders(
+  ttlMs: number,
+  swrMs: number = Math.floor(ttlMs / 2),
+): Record<string, string> {
+  return {
+    "Cache-Control": buildPublicCacheControl(ttlMs, swrMs),
+    "CDN-Cache-Control": buildPublicCacheControl(ttlMs, swrMs),
+    "Vary": "Accept-Encoding",
+  };
+}
+
+/**
+ * Build HTTP cache headers for the wizard / action-lookup endpoint.
+ *
+ * The lookup result is address-specific but not user-specific, so it can be
+ * publicly cached. A short TTL keeps validation fresh during the registration
+ * wizard flow.
+ *
+ * @param ttlMs   Cache lifetime in milliseconds.
+ */
+export function buildLookupCacheHeaders(ttlMs: number): Record<string, string> {
+  return {
+    "Cache-Control": buildPublicCacheControl(ttlMs, ttlMs),
+    "Vary": "Accept-Encoding",
+  };
+}
+
+/**
  * Dedicated KV cache for /api/check responses.
  *
  * Keyed by `check:<address>:<assetCode>:<assetIssuer>` so the same address
