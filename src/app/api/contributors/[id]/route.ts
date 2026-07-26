@@ -29,13 +29,15 @@ export async function POST(_request: Request, { params }: RouteContext) {
     );
   }
 
-  const contributor = await refreshContributor(id);
-  if (!contributor) {
+  const result = await refreshContributor(id);
+  if (!result) {
     return NextResponse.json(
       { error: "Contributor not found" },
       { status: 404 }
     );
   }
+
+  const { contributor, diff } = result;
 
   await recordAuditLog({
     action: "recheck.single",
@@ -43,7 +45,12 @@ export async function POST(_request: Request, { params }: RouteContext) {
     actorLogin: session.user.githubUsername ?? null,
     targetId: contributor.id,
     targetLabel: contributor.githubUsername,
-    metadata: { readiness: contributor.readiness, verified: contributor.verified },
+    metadata: {
+      previousReadiness: diff.previousReadiness,
+      readiness: contributor.readiness,
+      changed: diff.changed,
+      verified: contributor.verified,
+    },
   });
 
   return NextResponse.json({ contributor });

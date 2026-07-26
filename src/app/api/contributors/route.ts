@@ -26,15 +26,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const count = await refreshAllContributors();
+  const { refreshed, changed, diffs } = await refreshAllContributors();
   const contributors = await getContributors();
 
   await recordAuditLog({
     action: "recheck.batch",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
-    metadata: { refreshed: count },
+    metadata: {
+      refreshed,
+      changed,
+      diffs: diffs.filter((diff) => diff.changed),
+    },
   });
 
-  return NextResponse.json({ refreshed: count, contributors });
+  return NextResponse.json({ refreshed, contributors });
 }
