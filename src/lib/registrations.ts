@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { Registration } from "@prisma/client";
+import type { Registration, DisputeProof, DisputeStatus } from "@prisma/client";
+import { format } from "date-fns";
 
 import { prisma } from "@/lib/prisma";
 import { computeReadiness, computeVerified } from "@/lib/readiness";

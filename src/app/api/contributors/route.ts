@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!(await requireMaintainerSession())) {
+  if (!(await refreshMaintainerSession())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
