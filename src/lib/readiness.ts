@@ -105,7 +105,8 @@ export function buildCheckResult(
   xlm_balance: string,
   errors: string[] = [],
   trustlineAuthorized: boolean = trustline,
-  spendableXlmBalance?: string
+  spendableXlmBalance?: string,
+  horizonLatencyMs?: number
 ): HorizonCheckResult {
   const balance = String(xlm_balance ?? "0");
   const spendableBalance =
@@ -117,6 +118,7 @@ export function buildCheckResult(
     verified: computeVerified(funded, trustline, trustlineAuthorized),
     xlm_balance: balance,
     spendable_xlm_balance: spendableBalance,
+    horizon_latency_ms: horizonLatencyMs,
     errors,
     readiness: computeReadiness(funded, trustline, balance, {
       authorized: trustlineAuthorized,

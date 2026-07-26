@@ -235,6 +235,7 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     "xlm_balance",
     "last_checked_at",
     "spendable_xlm_balance",
+    "horizon_latency_ms",
   ];
 
   const rows = toExport.map((row) => [
@@ -248,6 +249,7 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     row.xlmBalance,
     row.lastCheckedAt ?? "",
     row.spendableXlmBalance,
+    row.horizonLatencyMs ?? "",
   ]);
 
   const csv = buildCsv(headers, rows);
@@ -277,6 +279,7 @@ export function exportContributorsJson(contributors: ContributorRow[], force = f
     "xlm_balance",
     "last_checked_at",
     "spendable_xlm_balance",
+    "horizon_latency_ms",
   ];
 
   const rows = toExport.map((row) => [
@@ -290,6 +293,7 @@ export function exportContributorsJson(contributors: ContributorRow[], force = f
     row.xlmBalance,
     row.lastCheckedAt ?? "",
     row.spendableXlmBalance,
+    row.horizonLatencyMs ?? "",
   ]);
 
   const json = buildJson(headers, rows);

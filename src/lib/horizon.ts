@@ -140,12 +140,14 @@ export async function checkStellarAddress(
   const server = getHorizonServer();
 
   try {
+    const startTime = Date.now();
     const account = await withRetry(() => server.loadAccount(trimmed), {
       attempts: retries,
       // A missing account (404) will never succeed — fail fast instead of retrying.
       shouldRetry: (error) =>
         !isAccountNotFoundError(getHorizonErrorMessage(error)),
     });
+    const latencyMs = Date.now() - startTime;
 
     const nativeBalance = account.balances.find(
       (b) => b.asset_type === "native"
@@ -178,7 +180,8 @@ export async function checkStellarAddress(
       xlmBalance,
       [],
       trustlineAuthorized,
-      spendableXlmBalance
+      spendableXlmBalance,
+      latencyMs
     );
 
     if (useCache) verificationCache.set(cacheKey, result);

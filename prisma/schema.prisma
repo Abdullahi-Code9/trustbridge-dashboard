@@ -48,6 +48,7 @@ model Registration {
   xlmBalance     String    @default("0")
   spendableXlmBalance String @default("0")
   lastCheckedAt  DateTime?
+  horizonLatencyMs Int?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
