@@ -27,6 +27,7 @@ export function toContributorRow(row: RegistrationWithUser): ContributorRow {
     funded: row.funded,
     xlmBalance: row.xlmBalance,
     spendableXlmBalance: row.spendableXlmBalance,
+    usdcBalance: row.usdcBalance,
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
     horizonLatencyMs: row.horizonLatencyMs,
     readiness: computeReadiness(row.funded, row.trustlineReady, row.xlmBalance, {
@@ -90,6 +91,7 @@ async function recheckRegistration(
       trustlineAuthorized: result.trustline_authorized,
       xlmBalance: result.xlm_balance,
       spendableXlmBalance: result.spendable_xlm_balance,
+      usdcBalance: result.usdc_balance,
       horizonLatencyMs: result.horizon_latency_ms,
       lastCheckedAt: new Date(),
     },

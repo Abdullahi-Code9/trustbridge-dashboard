@@ -47,6 +47,7 @@ model Registration {
   funded         Boolean   @default(false)
   xlmBalance     String    @default("0")
   spendableXlmBalance String @default("0")
+  usdcBalance    String    @default("0")
   lastCheckedAt  DateTime?
   horizonLatencyMs Int?
   createdAt      DateTime  @default(now())

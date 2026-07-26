@@ -233,8 +233,9 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     "trustline_authorized",
     "verified",
     "xlm_balance",
-    "last_checked_at",
     "spendable_xlm_balance",
+    "usdc_balance",
+    "last_checked_at",
     "horizon_latency_ms",
   ];
 
@@ -247,8 +248,9 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     row.trustlineAuthorized,
     row.verified,
     row.xlmBalance,
-    row.lastCheckedAt ?? "",
     row.spendableXlmBalance,
+    row.usdcBalance,
+    row.lastCheckedAt ?? "",
     row.horizonLatencyMs ?? "",
   ]);
 
@@ -277,8 +279,9 @@ export function exportContributorsJson(contributors: ContributorRow[], force = f
     "trustline_authorized",
     "verified",
     "xlm_balance",
-    "last_checked_at",
     "spendable_xlm_balance",
+    "usdc_balance",
+    "last_checked_at",
     "horizon_latency_ms",
   ];
 
@@ -291,8 +294,9 @@ export function exportContributorsJson(contributors: ContributorRow[], force = f
     row.trustlineAuthorized,
     row.verified,
     row.xlmBalance,
-    row.lastCheckedAt ?? "",
     row.spendableXlmBalance,
+    row.usdcBalance,
+    row.lastCheckedAt ?? "",
     row.horizonLatencyMs ?? "",
   ]);
 

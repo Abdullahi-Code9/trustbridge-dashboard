@@ -22,6 +22,10 @@ export interface HorizonCheckResult {
    */
   spendable_xlm_balance: string;
   /**
+   * USDC (or default configured asset) balance on account.
+   */
+  usdc_balance: string;
+  /**
    * Horizon RPC latency in milliseconds. Only set on successful checks.
    */
   horizon_latency_ms?: number;
@@ -45,6 +49,7 @@ export interface ContributorRow {
   funded: boolean;
   xlmBalance: string;
   spendableXlmBalance: string;
+  usdcBalance: string;
   lastCheckedAt: string | null;
   horizonLatencyMs: number | null;
   readiness: ReadinessStatus;
