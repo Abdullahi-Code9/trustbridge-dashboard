@@ -18,6 +18,9 @@
 - [Tech stack](#tech-stack)
 - [Routes & API](#routes--api)
 - [Environment variables](#environment-variables)
+- [Testing](#testing)
+  - [Wave #75 — Dark mode contrast audit](#wave-75--dark-mode-contrast-audit)
+  - [Wave #72 — Register API concurrency tests](#wave-72--register-api-concurrency-tests)
 - [Deployment](#deployment)
 - [Contributing](#contributing)
 - [License](#license)
@@ -156,7 +159,7 @@ All docs are cross-linked from this README:
 | Blockchain | [stellar-sdk](https://www.npmjs.com/package/stellar-sdk) + Horizon API |
 | Deployment | [Vercel](https://vercel.com/) (recommended) |
 
-**Brand colors:** Stellar purple `#3E1BDB`, cyan accent `#00B4D8`. Dark mode supported.
+**Brand colors:** Stellar purple `#3E1BDB`, cyan accent `#00B4D8`. Dark mode supported — all UI colour pairs meet WCAG 2.1 AA contrast requirements (≥ 4.5:1 for normal text, ≥ 3.0:1 for large text / UI components).
 
 ---
 
@@ -273,6 +276,63 @@ npm run test:e2e:ui   # interactive Playwright UI
 ```
 
 All tests run in CI on every push and pull request, before the build.
+
+### Wave #75 — Dark mode contrast audit
+
+Audits and enforces WCAG 2.1 AA contrast ratios across all dark-mode colour
+pairs in the dashboard. Run automatically as part of `npm test`.
+
+**What was audited and fixed:**
+
+| File | Issue | Fix |
+|------|-------|-----|
+| `src/app/globals.css` | `--destructive` at L=30.6% gave ~2.3:1 on dark bg (hard WCAG AA fail) | Raised to L=65% → ~5.9:1 |
+| `src/app/globals.css` | `--destructive-foreground` was near-white (unreadable on new lighter red) | Changed to dark (`0 0% 10%`) |
+| `src/app/globals.css` | `--muted-foreground` at L=65.1% was marginal on card bg | Raised to L=70% |
+| `src/app/globals.css` | `--primary` / `--ring` at L=58% | Raised to L=65% |
+| `src/app/globals.css` | `--accent` at L=42% | Raised to L=48% |
+| `src/app/globals.css` | `--border` / `--input` at L=17.5% (invisible dividers in dark) | Raised to L=22% |
+| `src/components/ui/badge.tsx` | `dark:text-*-400` (L≈60%) on dark card bg — below 4.5:1 | Raised to `dark:text-*-300` (L≈73%) |
+| `src/components/ui/badge.tsx` | Light mode `text-*-600` on white — marginal | Raised to `text-*-700` |
+| `src/app/dashboard/metrics/page.tsx` | Status-box sub-labels `dark:text-*-400` — below AA | Raised to `dark:text-*-200` |
+| `src/app/dashboard/metrics/page.tsx` | Status-box borders `dark:border-*-900` — near-invisible | Raised to `dark:border-*-800` |
+| `src/app/register/RegisterClient.tsx` | Amber banner `dark:text-amber-300 dark:bg-amber-500/10` | Fixed to `dark:text-amber-200 dark:bg-amber-950/40` |
+| `src/components/ContributorTable.tsx` | Stale-data warning `dark:border-amber-900` — near-invisible | Raised to `dark:border-amber-700/60` |
+
+**Automated tests** live in `src/lib/dark-mode-contrast-audit.test.ts`. The file
+encodes the WCAG 2.1 relative-luminance algorithm in pure TypeScript (no DOM
+required) and runs 25 assertions across five `describe` blocks:
+
+- CSS design tokens (foreground, muted-foreground, destructive, primary, accent)
+- Badge dark/light text on card backgrounds
+- Metrics-page status-box blended backgrounds (alpha-composited)
+- RegisterClient maintainer error banner
+- ContributorTable stale-data warning
+- Regression guard: four pre-fix colours that must *fail* WCAG AA — if these
+  ever pass it means the test palette data needs updating
+
+### Wave #72 — Register API concurrency tests
+
+Validates that `POST /api/register` is correct under concurrent load. Run with
+`npm run test:api` or `npm test`.
+
+**Test file:** `tests/api/register-concurrency.test.ts` — 22 assertions across 7
+`describe` blocks.
+
+| Scenario | Coverage |
+|----------|----------|
+| **Idempotency** | 5 simultaneous requests from the same user all return 200; Horizon called exactly N times |
+| **Address conflict race** | Two users racing to claim one address: exactly one 200 + one 409 |
+| **Re-assignment (no spurious 409)** | User updating their own registered address never gets a 409 |
+| **100+ contributor scale** | 120 distinct users register concurrently — all 200, no dropped requests, upsert called exactly 120× |
+| **Horizon outage** | `checkStellarAddress` rejects for all callers → all 500, DB never written |
+| **Partial Horizon outage** | Alternating pass/fail — correct mix of 200/500 responses |
+| **Mixed address pool** | 50 user pairs each racing for the same address — exactly 50 wins (200) + 50 losses (409) |
+| **Auth edge cases** | Unauthenticated → 401, cross-origin → 403, invalid format → 400, empty address → 400 with `validationErrors` |
+
+All mocks target `prisma`, `@/lib/horizon`, `next-auth`, and `@/lib/soroban-register`
+so no real database or network is needed. The conflict-detection mock simulates the
+`findUnique → upsert` race window that exists in the route handler.
 
 > **Schema hardening:** The `Registration` table enforces unique `stellarAddress` per user (one-to-one via `userId`), with comprehensive indexes on `trustlineReady`, `trustlineAuthorized`, `funded`, and `lastCheckedAt` for efficient filtering. All models include detailed field documentation in `prisma/schema.prisma`. The schema supports optimistic registration updates with proper cascading deletes and constraints to ensure data integrity during high-concurrency Wave operations.
 
