@@ -31,10 +31,6 @@ interface ContributorsResponse {
   contributors: ContributorRow[];
 }
 
-interface ContributorResponse {
-  contributor: ContributorRow;
-}
-
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
@@ -199,9 +195,6 @@ export default function DashboardPage() {
       ) : (
         <ContributorTable
           contributors={contributors}
-          onExport={() => {
-            exportContributorsCsv(contributors);
-          }}
           onExport={() => exportContributorsCsv(contributors)}
           onRecheck={(id) => recheckOneMutation.mutate(id)}
           recheckingId={

@@ -122,6 +122,7 @@ All docs are cross-linked from this README:
 | [**Deployment**](./docs/DEPLOYMENT.md) | Vercel deployment checklist |
 | [**Contributing**](./docs/CONTRIBUTING.md) | How to contribute to this repo |
 | [**CSRF protection**](./docs/CSRF.md) | Threat model, protected routes, non-browser client policy, testing guide |
+| [**Sentry error tracking**](./docs/SENTRY.md) | Setup, environment variables, instrumented routes, testing guide |
 
 ---
 
@@ -160,20 +161,13 @@ All docs are cross-linked from this README:
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
-| `/api/stats` | GET | Aggregate readiness statistics | — |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
-| `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
-| `/api/contributors` | GET/POST | List contributors / queue batch re-check (maintainer only) |
-| `/api/contributors/[id]` | POST | Queue a **single** contributor re-check via Horizon (maintainer only) |
-| `/api/contributors/queue/status` | GET | Check background queue metrics and job counts (maintainer only) |
-| `/api/contributors/queue/jobs/[jobId]` | GET | Get status and result of a queued recheck job (maintainer only) |
-| `/api/contributors/export/csv` | GET | Server-side CSV export of all contributors (maintainer only) |
-| `/api/contributors/export/json` | GET | Server-side JSON export of all contributors (maintainer only) |
+| `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
-| `/api/stats` | GET | Aggregate readiness statistics |
+| `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
+| `/api/health` | GET | Liveness + readiness probe — DB ping and CSV staleness check (public, always 200) |
 
 ### Resilience
 

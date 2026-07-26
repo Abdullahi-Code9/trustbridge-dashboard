@@ -29,16 +29,28 @@ export async function POST(_request: Request, { params }: RouteContext) {
     );
   }
 
-  const jobId = backgroundQueue.enqueue("recheck.single", {
-    contributorId: id,
-  });
+  const result = await refreshContributor(id);
+  if (!result) {
+    return NextResponse.json(
+      { error: "Contributor not found" },
+      { status: 404 }
+    );
+  }
+
+  const { contributor, diff } = result;
 
   await recordAuditLog({
     action: "recheck.single.queued",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
-    targetId: id,
-    metadata: { jobId },
+    targetId: contributor.id,
+    targetLabel: contributor.githubUsername,
+    metadata: {
+      previousReadiness: diff.previousReadiness,
+      readiness: contributor.readiness,
+      changed: diff.changed,
+      verified: contributor.verified,
+    },
   });
 
   return NextResponse.json({ jobId });
