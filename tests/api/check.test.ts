@@ -73,6 +73,22 @@ describe("POST /api/check", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 200 with mocked result (same-origin)", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: true,
+      trustline: true,
+      xlm_balance: "2",
+      readiness: "ready",
+      errors: [],
+    } as any);
+
+    const r = post({ address: "GBSX" });
+    const res = await POST(r);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.funded).toBe(true);
+  });
+
   it("returns 200 with not-ready state when circuit breaker is open", async () => {
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: false,
