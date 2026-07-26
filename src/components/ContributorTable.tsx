@@ -13,7 +13,7 @@ import {
   type ContributorSortKey,
 } from "@/lib/contributors";
 import { buildCsv, buildCsvFilename, buildJson, buildJsonFilename, downloadCsv, downloadJson } from "@/lib/csv";
-import { buildStalenessSummary } from "@/lib/stale-export";
+import { buildStalenessSummary, filterContributorsByDateRange } from "@/lib/stale-export";
 import { getRowAccent } from "@/lib/readiness";
 import { cn, formatGithubHandle, formatRelativeTime, formatXlmBalance, shortenAddress } from "@/lib/utils";
 import type { ContributorRow } from "@/types";
@@ -213,10 +213,11 @@ export function ContributorTable({
   );
 }
 
-export function exportContributorsCsv(contributors: ContributorRow[], force = false): boolean {
+export function exportContributorsCsv(contributors: ContributorRow[], force = false, filterStale = false): boolean {
+  const toExport = filterStale ? contributors.filter((c) => c.lastCheckedAt !== null && c.lastCheckedAt !== "") : contributors;
   const summary = buildStalenessSummary(contributors);
 
-  if (summary.stale && !force) {
+  if (summary.stale && !force && !filterStale) {
     const confirmed = window.confirm(
       `${summary.warning}\n\nDo you want to export anyway?`
     );
@@ -236,7 +237,7 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
     "spendable_xlm_balance",
   ];
 
-  const rows = contributors.map((row) => [
+  const rows = toExport.map((row) => [
     row.githubUsername,
     row.stellarAddress,
     row.readiness,
@@ -254,10 +255,11 @@ export function exportContributorsCsv(contributors: ContributorRow[], force = fa
   return true;
 }
 
-export function exportContributorsJson(contributors: ContributorRow[], force = false): boolean {
+export function exportContributorsJson(contributors: ContributorRow[], force = false, filterStale = false): boolean {
+  const toExport = filterStale ? contributors.filter((c) => c.lastCheckedAt !== null && c.lastCheckedAt !== "") : contributors;
   const summary = buildStalenessSummary(contributors);
 
-  if (summary.stale && !force) {
+  if (summary.stale && !force && !filterStale) {
     const confirmed = window.confirm(
       `${summary.warning}\n\nDo you want to export anyway?`
     );
@@ -277,7 +279,7 @@ export function exportContributorsJson(contributors: ContributorRow[], force = f
     "spendable_xlm_balance",
   ];
 
-  const rows = contributors.map((row) => [
+  const rows = toExport.map((row) => [
     row.githubUsername,
     row.stellarAddress,
     row.readiness,
