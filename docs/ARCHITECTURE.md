@@ -275,15 +275,15 @@ This section covers the full lifecycle of Soroban integration: the read path tha
 - No caching layer sits in front of this call today (unlike `/api/actions/lookup`, which caches Horizon reads for 30s in `src/lib/cache.ts`); each request re-queries the RPC endpoint. A cache would be a reasonable addition if this panel sees high-frequency polling.
 - Unit coverage: `src/lib/soroban.test.ts` (success, missing config, RPC failure) and `src/app/api/soroban/events/route.test.ts` (maintainer guard: 403 for anonymous/non-maintainer, 200 with the timeline payload for a maintainer).
 
-### Write-through path (design only — not implemented)
+### Write-through path (wired, on-chain execution pending)
 
-No code path writes to a Soroban contract today. `/api/register` (`src/app/api/register/route.ts`) only performs a Horizon check and a Prisma upsert. This section documents the intended design so a future contributor can implement it consistently and safely:
+The write-through scaffolding is now in place (`src/lib/soroban-register.ts`), wired into `/api/register`'s `POST` handler, and ready for on-chain execution logic. This section documents the design pattern established:
 
 - **PostgreSQL stays the source of truth.** A Soroban write is a mirror, not a replacement — dashboard reads, Wave aggregation, and CSV export continue to query Postgres exclusively.
-- **Ordering:** the contract write would be attempted in `/api/register`'s `POST` handler **after** `prisma.registration.upsert()` resolves successfully — never before, and never in a way that blocks or gates the Postgres write.
-- **Best-effort and failure-isolated:** the write attempt must be wrapped so that a Soroban RPC outage, rate limit, or a missing `SOROBAN_CONTRACT_ID` can never fail the request or roll back the registration. The existing `getSorobanEventTimeline()` "never throw, return an `errors` array" convention is the model to follow — e.g. a `mirrorRegistrationToSoroban()` helper that returns a result/error object rather than throwing, called with its outcome logged (not surfaced as a request failure) and never `await`-blocking the HTTP response on-chain confirmation.
-- **Zero on-chain dependency for the core flow:** contributors must be able to register successfully with `SOROBAN_CONTRACT_ID` unset entirely, exactly as today.
-- **Where it would live:** a new `src/lib/soroban-register.ts` (or an addition to `src/lib/soroban.ts`) exporting the write helper, invoked from `/api/register`'s `POST` handler per the ordering above.
+- **Ordering:** the contract write is attempted in `/api/register`'s `POST` handler **after** `prisma.registration.upsert()` resolves successfully — never before, and never in a way that blocks or gates the Postgres write. Implementation: `mirrorRegistrationToSoroban(registration)` is called without `await`, allowing it to complete asynchronously after the HTTP response returns.
+- **Best-effort and failure-isolated:** the write attempt is wrapped in `mirrorRegistrationToSoroban()` (`src/lib/soroban-register.ts`) so that a Soroban RPC outage, rate limit, or a missing `SOROBAN_CONTRACT_ID` can never fail the request. Follows the `getSorobanEventTimeline()` "never throw, return an `errors` array" convention — returns a `SorobanRegistrationResult` with `success` boolean and `errors[]`. Errors are logged to console but never surfaced as a request failure.
+- **Zero on-chain dependency for the core flow:** contributors register successfully with `SOROBAN_CONTRACT_ID` unset (the write is skipped with no errors). Registration works end-to-end even if Soroban is down.
+- **Current implementation:** `src/lib/soroban-register.ts` exports `mirrorRegistrationToSoroban()`, called from `/api/register` after upsert. Placeholder implementation ready for on-chain execution logic (transaction building, signing, and submission).
 
 ### Edge cases
 
