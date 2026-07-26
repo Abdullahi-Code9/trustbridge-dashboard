@@ -29,10 +29,6 @@ interface ContributorsResponse {
   contributors: ContributorRow[];
 }
 
-interface ContributorResponse {
-  contributor: ContributorRow;
-}
-
 export default function DashboardPage() {
   const queryClient = useQueryClient();
 
