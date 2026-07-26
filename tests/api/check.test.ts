@@ -44,7 +44,10 @@ describe("POST /api/check", () => {
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: true,
       trustline: true,
+      trustline_authorized: true,
+      verified: true,
       xlm_balance: "2",
+      spendable_xlm_balance: "1.5",
       readiness: "ready",
       errors: [],
     } as any);
@@ -90,7 +93,10 @@ describe("POST /api/check", () => {
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: false,
       trustline: false,
+      trustline_authorized: false,
+      verified: false,
       xlm_balance: "0",
+      spendable_xlm_balance: "0",
       readiness: "not_ready",
       errors: ["Horizon is temporarily unavailable. Please try again later."],
     } as any);
@@ -102,6 +108,25 @@ describe("POST /api/check", () => {
     expect(json.errors).toContain(
       "Horizon is temporarily unavailable. Please try again later."
     );
+  });
+
+  it("returns 200 with mocked result (same-origin)", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: true,
+      trustline: true,
+      trustline_authorized: true,
+      verified: true,
+      xlm_balance: "2",
+      spendable_xlm_balance: "1.5",
+      readiness: "ready",
+      errors: [],
+    } as any);
+
+    const r = post({ address: "GBSX" });
+    const res = await POST(r);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.funded).toBe(true);
   });
 
   it("returns 500 for unexpected errors", async () => {

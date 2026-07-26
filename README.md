@@ -28,9 +28,19 @@
 
 | Audience | Capability |
 |----------|------------|
-| **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve) |
-| **Maintainers** | View all registrations, **search** by username/address, **toggle column visibility**, filter by readiness, batch re-check via Horizon, export CSV for Wave payout prep, review recent Soroban contract events, view admin metrics |
+| **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve), view outreach template examples |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, Wave prep workspace with stats and bulk export (CSV/JSON), generate outreach templates for contributors, review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
+
+### Outreach templates
+
+The dashboard includes a template generator (on the register page) that creates contributor outreach materials in three formats:
+
+- **Email** — subject line, body, next steps, wallet proof guidelines
+- **Markdown** — checklist, troubleshooting table, with emoji and formatting
+- **Plain text** — simple, universal format for copy-paste or SMS
+
+Templates are customizable by Wave number, contributor name, minimum XLM requirement, deadline, and support email. Download or copy directly to clipboard.
 
 ### Readiness model
 
@@ -73,7 +83,17 @@ cd trustbridge-dashboard
 npm install
 ```
 
-### 2. Configure environment
+### 2. Start the dev database stack (optional)
+
+For local development with PostgreSQL in Docker:
+
+```bash
+docker-compose up -d
+```
+
+See [docs/DOCKER_COMPOSE.md](./docs/DOCKER_COMPOSE.md) for details.
+
+### 3. Configure environment
 
 ```bash
 cp .env.example .env.local
@@ -81,13 +101,19 @@ cp .env.example .env.local
 
 Fill in all required values — see [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for full reference.
 
-### 3. Initialize the database
+If using Docker Compose, set:
+
+```bash
+DATABASE_URL="postgresql://trustbridge:trustbridge-dev-password@localhost:5432/trustbridge_dashboard?schema=public"
+```
+
+### 4. Initialize the database
 
 ```bash
 npm run db:push
 ```
 
-### 4. Run locally
+### 5. Run locally
 
 ```bash
 npm run dev
@@ -106,12 +132,14 @@ All docs are cross-linked from this README:
 | Document | Description |
 |----------|-------------|
 | [**Setup guide**](./docs/SETUP.md) | Step-by-step local development setup |
+| [**Docker Compose stack**](./docs/DOCKER_COMPOSE.md) | Containerized dev environment with PostgreSQL |
 | [**Environment variables**](./docs/ENVIRONMENT.md) | Every env var explained |
 | [**Architecture**](./docs/ARCHITECTURE.md) | System design, data flow, auth model |
 | [**Project structure**](./docs/PROJECT_STRUCTURE.md) | Directory layout and key files |
 | [**Deployment**](./docs/DEPLOYMENT.md) | Vercel deployment checklist |
 | [**Contributing**](./docs/CONTRIBUTING.md) | How to contribute to this repo |
 | [**CSRF protection**](./docs/CSRF.md) | Threat model, protected routes, non-browser client policy, testing guide |
+| [**Sentry error tracking**](./docs/SENTRY.md) | Setup, environment variables, instrumented routes, testing guide |
 
 ---
 
@@ -151,21 +179,29 @@ All docs are cross-linked from this README:
 | `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` | 10 req/min |
 | `/api/register` | GET/POST | Read/save contributor registration (authenticated) | — |
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
-| `/api/stats` | GET | Aggregate readiness statistics | — |
-| `/api/check` | POST | Horizon validation `{ address, asset_code?, asset_issuer? }` — returns `trustline_authorized` and `verified` |
-| `/api/register` | GET/POST | Read/save contributor registration (authenticated) |
-| `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
-| `/api/stats` | GET | Aggregate readiness statistics |
+| `/api/stats` | GET | Aggregate readiness statistics | — |
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
+| `/api/health` | GET | Liveness + readiness probe — DB ping and CSV staleness check (public, always 200) |
 
 ### Resilience
 
+- **Background recheck queue** — `src/lib/background-queue.ts` implements an in-memory job queue for Horizon rechecks. All recheck requests (batch and single) are queued and processed with a default concurrency limit of 2. This prevents Horizon rate-limit exhaustion and allows maintainers to request rechecks without blocking. Check queue status and job results via `/api/contributors/queue/status` and `/api/contributors/queue/jobs/[jobId]`. Configurable concurrency via code (currently hardcoded at 2 jobs max). Job history is retained in memory (last 100 completed jobs).
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
 - **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If any contributor hasn't been verified within the configured window (default 24h), the dashboard shows an amber warning banner and requires confirmation before exporting. Configurable via `STALE_CSV_MAX_AGE_MS`.
+
+### Structured logging
+
+- **Request/response logging** — `src/lib/logger.ts` provides structured JSON logging for debugging and monitoring. All API requests, Horizon calls, and database operations can be logged with context and metadata. Enable debug logging via `DEBUG=true` environment variable.
+- **Observability** — Log format includes timestamp, log level (info/warn/error/debug), context identifier, message, and optional details. Perfect for ingestion into centralized logging platforms.
+
+### Pagination & infinite scroll
+
+- **Cursor-based pagination** — `/api/contributors/paginated` supports efficient cursor-based pagination via the `useInfiniteContributors()` React Query hook. Useful for tables with 100+ contributors.
+- **React Query integration** — `src/lib/use-infinite-contributors.ts` provides a drop-in hook for infinite scroll UIs. Automatically fetches next pages as users scroll.
 
 ### Middleware
 
@@ -238,10 +274,7 @@ npm run test:e2e:ui   # interactive Playwright UI
 
 All tests run in CI on every push and pull request, before the build.
 
-> **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`,
-> issue #22 adds an `AuditLog` table, and issue #8 adds a `spendableXlmBalance`
-> column to `Registration`. After pulling these changes, sync your database with
-> `npm run db:push`.
+> **Schema hardening:** The `Registration` table enforces unique `stellarAddress` per user (one-to-one via `userId`), with comprehensive indexes on `trustlineReady`, `trustlineAuthorized`, `funded`, and `lastCheckedAt` for efficient filtering. All models include detailed field documentation in `prisma/schema.prisma`. The schema supports optimistic registration updates with proper cascading deletes and constraints to ensure data integrity during high-concurrency Wave operations.
 
 ---
 

@@ -1,0 +1,170 @@
+# Docker Compose Development Stack
+
+This guide explains how to set up and use the Docker Compose development environment for TrustBridge Dashboard.
+
+## Overview
+
+The `docker-compose.yml` file defines a containerized development stack with:
+
+- **PostgreSQL 16** — Database server for TrustBridge registrations
+- **Adminer** — Web UI for database management and inspection
+
+## Prerequisites
+
+- [Docker](https://www.docker.com/products/docker-desktop) (20.10+)
+- [Docker Compose](https://docs.docker.com/compose/install/) (2.0+)
+- Node.js 18+ (for the Next.js application)
+
+## Quick Start
+
+### 1. Start the containers
+
+```bash
+docker-compose up -d
+```
+
+This starts PostgreSQL and Adminer in the background. Use `docker-compose up` (without `-d`) to see logs.
+
+### 2. Verify the services
+
+PostgreSQL should be running on `localhost:5432`:
+
+```bash
+docker-compose ps
+```
+
+Expected output:
+
+```
+NAME                   COMMAND                  SERVICE      STATUS
+trustbridge-postgres   "docker-entrypoint.s…"   postgres     Up (healthy)
+trustbridge-adminer    "entrypoint.sh …"        postgres-admin  Up
+```
+
+### 3. Configure your application
+
+Set the `DATABASE_URL` in `.env.local`:
+
+```bash
+DATABASE_URL="postgresql://trustbridge:trustbridge-dev-password@localhost:5432/trustbridge_dashboard?schema=public"
+```
+
+### 4. Initialize the database
+
+From the project root, run:
+
+```bash
+npm run db:push
+```
+
+This creates all tables defined in `prisma/schema.prisma`.
+
+### 5. Start the Next.js application
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Database Management
+
+### Using Adminer
+
+Adminer is available at [http://localhost:8080](http://localhost:8080).
+
+**Login details:**
+- System: PostgreSQL
+- Server: postgres
+- Username: `trustbridge`
+- Password: `trustbridge-dev-password`
+- Database: `trustbridge_dashboard`
+
+### Using psql
+
+Connect to PostgreSQL directly:
+
+```bash
+docker-compose exec postgres psql -U trustbridge -d trustbridge_dashboard
+```
+
+### Viewing logs
+
+```bash
+docker-compose logs -f postgres
+docker-compose logs -f postgres-admin
+```
+
+## Stopping and Cleanup
+
+### Stop containers (preserve data)
+
+```bash
+docker-compose stop
+```
+
+### Stop and remove containers (preserve data)
+
+```bash
+docker-compose down
+```
+
+### Remove containers and volumes (delete all data)
+
+```bash
+docker-compose down -v
+```
+
+## Troubleshooting
+
+### "Connection refused" error
+
+Ensure the containers are running:
+
+```bash
+docker-compose ps
+```
+
+If not running, start them:
+
+```bash
+docker-compose up -d
+```
+
+### PostgreSQL won't start
+
+Check logs:
+
+```bash
+docker-compose logs postgres
+```
+
+Common issues:
+- Port 5432 already in use — stop the conflicting service or change the port in `docker-compose.yml`
+- Volume permission issues — run `docker-compose down -v` and restart
+
+### Database is empty after starting
+
+Run the migration:
+
+```bash
+npm run db:push
+```
+
+## Environment Variables
+
+All configuration is in `docker-compose.yml`. For development, the defaults are:
+
+| Variable | Value |
+|----------|-------|
+| `POSTGRES_USER` | `trustbridge` |
+| `POSTGRES_PASSWORD` | `trustbridge-dev-password` |
+| `POSTGRES_DB` | `trustbridge_dashboard` |
+| Database host | `postgres` (within containers) or `localhost` (from host) |
+| Database port | `5432` |
+
+## Production Deployment
+
+**Do not use these credentials in production.** For production deployments, use managed database services (AWS RDS, Google Cloud SQL, Neon, Vercel Postgres, etc.) and follow your provider's security guidelines.
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for production setup.
