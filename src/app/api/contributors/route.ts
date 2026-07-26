@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   const contributors = await getContributors();
 
   await recordAuditLog({
-    action: "recheck.batch",
+    action: "recheck.batch.queued",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
     metadata: {
