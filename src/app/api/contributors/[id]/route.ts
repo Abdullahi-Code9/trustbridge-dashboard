@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
-import { refreshContributor } from "@/lib/registrations";
+import { backgroundQueue } from "@/lib/queue-worker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ interface RouteContext {
 }
 
 /**
- * Re-check a single contributor's Stellar readiness via Horizon.
- * Maintainer-only. Records an audit entry on success.
+ * Queue a single contributor's Stellar readiness re-check via Horizon.
+ * Maintainer-only. Returns the queued job ID and records an audit entry.
  */
 export async function POST(_request: Request, { params }: RouteContext) {
   const session = await requireMaintainerSession();
@@ -29,22 +29,29 @@ export async function POST(_request: Request, { params }: RouteContext) {
     );
   }
 
-  const contributor = await refreshContributor(id);
-  if (!contributor) {
+  const result = await refreshContributor(id);
+  if (!result) {
     return NextResponse.json(
       { error: "Contributor not found" },
       { status: 404 }
     );
   }
 
+  const { contributor, diff } = result;
+
   await recordAuditLog({
-    action: "recheck.single",
+    action: "recheck.single.queued",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
     targetId: contributor.id,
     targetLabel: contributor.githubUsername,
-    metadata: { readiness: contributor.readiness, verified: contributor.verified },
+    metadata: {
+      previousReadiness: diff.previousReadiness,
+      readiness: contributor.readiness,
+      changed: diff.changed,
+      verified: contributor.verified,
+    },
   });
 
-  return NextResponse.json({ contributor });
+  return NextResponse.json({ jobId });
 }

@@ -51,3 +51,47 @@ describe("JSON helpers", () => {
     expect(buildJsonFilename("wave", date)).toBe("wave-2024-06-15.json");
   });
 });
+
+describe("CSV stats validation", () => {
+  it("builds CSV with incremental stats counters", () => {
+    const headers = ["id", "username", "status", "ready_count", "export_version"];
+    const rows = [
+      ["1", "alice", "ready", "1", "1"],
+      ["2", "bob", "not_ready", "1", "1"],
+      ["3", "charlie", "ready", "2", "1"],
+    ];
+
+    const csv = buildCsv(headers, rows);
+
+    // Verify CSV structure
+    expect(csv).toContain("id,username,status,ready_count,export_version");
+    expect(csv).toContain("alice");
+    expect(csv).toContain("bob");
+    expect(csv).toContain("charlie");
+  });
+
+  it("validates CSV row count consistency", () => {
+    const headers = ["id", "username", "status"];
+    const rows = [
+      ["1", "alice", "ready"],
+      ["2", "bob", "not_ready"],
+    ];
+
+    const csv = buildCsv(headers, rows);
+    const lines = csv.split("\n");
+
+    // Should have header + 2 rows
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("id,username,status");
+  });
+
+  it("handles special characters in stats export", () => {
+    const headers = ["id", "username", "note"];
+    const rows = [["1", "alice", "Contains, comma and \"quotes\""]];
+
+    const csv = buildCsv(headers, rows);
+
+    // Special characters should be properly escaped
+    expect(csv).toContain('Contains, comma and ""quotes""');
+  });
+});

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 import { AddressInput } from "@/components/AddressInput";
+import { OutreachTemplateGenerator } from "@/components/OutreachTemplateGenerator";
 import { TrustlineGuidancePanel } from "@/components/TrustlineGuidancePanel";
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { Button } from "@/components/ui/button";
@@ -160,6 +161,10 @@ export function RegisterClient() {
         <div className="lg:col-span-2">
           <TrustlineGuidancePanel />
         </div>
+      </div>
+
+      <div className="mt-12 border-t pt-8">
+        <OutreachTemplateGenerator />
       </div>
     </div>
   );

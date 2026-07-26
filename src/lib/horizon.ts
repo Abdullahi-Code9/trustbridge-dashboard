@@ -121,15 +121,15 @@ export async function checkStellarAddress(
     if (cached) return cached;
   }
 
-  const server = getHorizonServer();
-
   try {
-    const account = await withRetry(() => server.loadAccount(trimmed), {
-      attempts: retries,
-      // A missing account (404) will never succeed — fail fast instead of retrying.
-      shouldRetry: (error) =>
-        !isAccountNotFoundError(getHorizonErrorMessage(error)),
-    });
+    const account = await horizonCircuitBreaker.call(() =>
+      withRetry(() => loadAccountFromHorizon(trimmed), {
+        attempts: retries,
+        // A missing account (404) will never succeed — fail fast instead of retrying.
+        shouldRetry: (error) =>
+          !isAccountNotFoundError(getHorizonErrorMessage(error)),
+      })
+    );
 
     const nativeBalance = account.balances.find(
       (b) => b.asset_type === "native"
