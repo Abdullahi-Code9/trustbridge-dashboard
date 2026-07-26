@@ -236,10 +236,7 @@ npm run test:watch
 
 Tests also run in CI on every push and pull request, before the build.
 
-> **Schema note:** issue #7 adds a `trustlineAuthorized` column to `Registration`,
-> issue #22 adds an `AuditLog` table, and issue #8 adds a `spendableXlmBalance`
-> column to `Registration`. After pulling these changes, sync your database with
-> `npm run db:push`.
+> **Schema hardening:** The `Registration` table enforces unique `stellarAddress` per user (one-to-one via `userId`), with comprehensive indexes on `trustlineReady`, `trustlineAuthorized`, `funded`, and `lastCheckedAt` for efficient filtering. All models include detailed field documentation in `prisma/schema.prisma`. The schema supports optimistic registration updates with proper cascading deletes and constraints to ensure data integrity during high-concurrency Wave operations.
 
 ---
 
