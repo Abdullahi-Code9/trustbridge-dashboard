@@ -97,6 +97,18 @@ describe("POST /api/check", () => {
     // Use distinct addresses so the KV cache does not serve any of the 10
     // requests from cache — each is a genuine cache miss that exercises the
     // full CSRF → rate-limit → Horizon path and counts toward the limit.
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: true,
+      trustline: true,
+      trustline_authorized: true,
+      verified: true,
+      xlm_balance: "2",
+      spendable_xlm_balance: "1.5",
+      readiness: "ready",
+      errors: [],
+    } as any);
+
+    // Exhaust the default limit (10 requests)
     for (let i = 0; i < 10; i++) {
       const r = post({ address: `GBSX${i}` });
       const res = await POST(r);
@@ -127,6 +139,54 @@ describe("POST /api/check", () => {
 
   it("returns 200 with the Horizon result on cache miss (first call)", async () => {
     vi.mocked(checkStellarAddress).mockResolvedValue(readyResult);
+  it("returns 200 with mocked result (same-origin)", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: true,
+      trustline: true,
+      xlm_balance: "2",
+      readiness: "ready",
+      errors: [],
+    } as any);
+
+    const r = post({ address: "GBSX" });
+    const res = await POST(r);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.funded).toBe(true);
+  });
+
+  it("returns 200 with not-ready state when circuit breaker is open", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: false,
+      trustline: false,
+      trustline_authorized: false,
+      verified: false,
+      xlm_balance: "0",
+      spendable_xlm_balance: "0",
+      readiness: "not_ready",
+      errors: ["Horizon is temporarily unavailable. Please try again later."],
+    } as any);
+
+    const r = post({ address: "GBSX" });
+    const res = await POST(r);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.errors).toContain(
+      "Horizon is temporarily unavailable. Please try again later."
+    );
+  });
+
+  it("returns 200 with mocked result (same-origin)", async () => {
+    vi.mocked(checkStellarAddress).mockResolvedValue({
+      funded: true,
+      trustline: true,
+      trustline_authorized: true,
+      verified: true,
+      xlm_balance: "2",
+      spendable_xlm_balance: "1.5",
+      readiness: "ready",
+      errors: [],
+    } as any);
 
     const r = post({ address: "GBSX" });
     const res = await POST(r);
