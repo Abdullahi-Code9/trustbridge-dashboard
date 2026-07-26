@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { LayoutDashboard, Moon, Sun, UserPlus } from "lucide-react";
+import { LayoutDashboard, Moon, Settings, Sun, UserPlus } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { GitHubIcon } from "@/components/icons/GitHubIcon";
@@ -57,6 +57,14 @@ export function Header() {
               className="text-muted-foreground transition-colors hover:text-foreground"
             >
               Dashboard
+            </Link>
+          )}
+          {session?.user?.isMaintainer && (
+            <Link
+              href="/dashboard/settings"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Settings
             </Link>
           )}
         </nav>
@@ -117,6 +125,19 @@ export function Header() {
               <Link href="/dashboard">
                 <LayoutDashboard className="h-4 w-4" />
                 Dashboard
+              </Link>
+            </Button>
+          )}
+          {session?.user?.isMaintainer && (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="hidden sm:inline-flex"
+            >
+              <Link href="/dashboard/settings">
+                <Settings className="h-4 w-4" />
+                Settings
               </Link>
             </Button>
           )}
