@@ -50,7 +50,8 @@ export type AuditAction =
   | "recheck.batch"
   | "registration.create"
   | "registration.update"
-  | "network_config_mismatch_detected";
+  | "network_config_mismatch_detected"
+  | "contract.sync";
 
 export interface AuditLogEntry {
   id: string;

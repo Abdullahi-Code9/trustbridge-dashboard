@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getContractSyncHealth } from "@/lib/contract-sync";
 import { prisma } from "@/lib/prisma";
 import { buildStalenessSummary } from "@/lib/stale-export";
 import { toContributorRow } from "@/lib/registrations";
@@ -20,6 +21,11 @@ export interface HealthResponse {
       totalCount: number;
       stalePercent: number;
       warning: string;
+    };
+    contractSync: {
+      status: HealthStatus;
+      lastRunAt: string | null;
+      lastError?: string;
     };
   };
   version: string;
@@ -106,12 +112,19 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   }
 
   // ------------------------------------------------------------------
+  // Contract-to-Postgres sync job status
+  // ------------------------------------------------------------------
+  const lastSync = getContractSyncHealth();
+  const contractSyncStatus: HealthStatus =
+    lastSync?.status === "error" ? "degraded" : "ok";
+
+  // ------------------------------------------------------------------
   // Overall status
   // ------------------------------------------------------------------
   let overallStatus: HealthStatus = "ok";
   if (dbStatus === "error") {
     overallStatus = "error";
-  } else if (csvStatus === "degraded") {
+  } else if (csvStatus === "degraded" || contractSyncStatus === "degraded") {
     overallStatus = "degraded";
   }
 
@@ -127,6 +140,11 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
       csvStaleness: {
         status: csvStatus,
         ...csvSummary,
+      },
+      contractSync: {
+        status: contractSyncStatus,
+        lastRunAt: lastSync?.startedAt ?? null,
+        ...(lastSync?.error ? { lastError: lastSync.error } : {}),
       },
     },
     version,
