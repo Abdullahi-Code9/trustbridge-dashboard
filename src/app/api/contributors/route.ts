@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireMaintainerSession } from "@/lib/api-auth";
+import { refreshMaintainerSession, requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
+import { getRegistryMode } from "@/lib/registry-mode";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
 import type { ReadinessStatus } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const VALID_READINESS_FILTERS = new Set<ReadinessStatus>([
+  "ready",
+  "low_reserve",
+  "not_ready",
+]);
+
+export async function GET(request: NextRequest) {
   if (!(await refreshMaintainerSession())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -40,6 +47,7 @@ export async function GET() {
     contributors,
     total: allContributors.length,
     filtered: contributors.length,
+    registryMode: getRegistryMode(),
     ...(readinessParam !== null ? { readiness: readinessParam } : {}),
   });
 }
@@ -67,5 +75,9 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ refreshed, contributors });
+  return NextResponse.json({
+    refreshed,
+    contributors,
+    registryMode: getRegistryMode(),
+  });
 }

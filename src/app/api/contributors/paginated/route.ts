@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMaintainerSession } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { toContributorRow } from "@/lib/registrations";
+import { getRegistryMode } from "@/lib/registry-mode";
+import { getContributorsPaginated } from "@/lib/registrations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,10 @@ export const dynamic = "force-dynamic";
  * Query params:
  * - limit: number of items per page (default: 25, max: 100)
  * - cursor: cursor from previous page's response
+ *
+ * Delegates to `getContributorsPaginated` (src/lib/registrations.ts) — the
+ * same cursor-pagination logic already used and tested elsewhere — rather
+ * than re-implementing cursor handling against Prisma directly here.
  */
 export async function GET(request: NextRequest) {
   const session = await requireMaintainerSession();
@@ -22,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const limitParam = searchParams.get("limit");
-  const cursor = searchParams.get("cursor");
+  const cursor = searchParams.get("cursor") ?? undefined;
 
   let limit = 25;
   if (limitParam) {
@@ -32,30 +37,16 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const registrations = await prisma.registration.findMany({
-    include: {
-      user: {
-        select: { githubUsername: true },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-    take: limit + 1,
-    ...(cursor && {
-      cursor: { id: cursor },
-      skip: 1,
-    }),
-  });
-
-  const hasMore = registrations.length > limit;
-  const items = hasMore ? registrations.slice(0, limit) : registrations;
-  const nextCursor = hasMore ? items[items.length - 1]?.id : undefined;
-
-  const contributors = items.map(toContributorRow);
+  const [{ contributors, nextCursor, hasMore }, total] = await Promise.all([
+    getContributorsPaginated(cursor, limit),
+    prisma.registration.count(),
+  ]);
 
   return NextResponse.json({
     contributors,
-    total: await prisma.registration.count(),
+    total,
     hasMore,
-    nextCursor,
+    nextCursor: nextCursor ?? undefined,
+    registryMode: getRegistryMode(),
   });
 }
