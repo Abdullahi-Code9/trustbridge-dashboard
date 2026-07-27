@@ -3,6 +3,7 @@ import "server-only";
 import type { Registration, DisputeProof, DisputeStatus } from "@prisma/client";
 import { format } from "date-fns";
 
+import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
 import { computeReadiness, computeVerified } from "@/lib/readiness";
 import { buildDashboardStats } from "@/lib/stats";
@@ -159,7 +160,6 @@ async function recheckRegistration(
 ): Promise<RecheckOutcome> {
   const previousReadiness = readinessOf(registration);
 
-  const { checkStellarAddress } = await import("@/lib/horizon");
   const result = await checkStellarAddress(registration.stellarAddress);
 
   const updated = await prisma.registration.update({
@@ -187,25 +187,85 @@ async function recheckRegistration(
   };
 }
 
+export interface RefreshAllError {
+  registrationId: string;
+  message: string;
+}
+
 export interface RefreshAllSummary {
   refreshed: number;
   changed: number;
   diffs: ReadinessDiff[];
+  errors: RefreshAllError[];
+}
+
+/**
+ * Number of registrations rechecked concurrently by `refreshAllContributors`.
+ * Bounded so a large contributor base can't fan out into an unbounded burst
+ * of simultaneous Horizon requests (see docs/HORIZON_RETRY_NOTES.md).
+ */
+function getBatchConcurrency(): number {
+  const parsed = Number.parseInt(
+    process.env.HORIZON_BATCH_CONCURRENCY ?? "5",
+    10
+  );
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Run `recheckRegistration` over every row with bounded concurrency. A single
+ * registration's failure (e.g. a transient DB error — Horizon errors are
+ * already caught inside `checkStellarAddress`) is recorded and skipped
+ * rather than rejecting the whole batch, so one bad row can't lose the
+ * results already computed for everyone else.
+ */
+async function recheckAllWithConcurrency(
+  registrations: Registration[],
+  concurrency: number
+): Promise<{ diffs: ReadinessDiff[]; errors: RefreshAllError[] }> {
+  const diffs: ReadinessDiff[] = [];
+  const errors: RefreshAllError[] = [];
+  const queue = [...registrations];
+
+  async function worker() {
+    while (queue.length > 0) {
+      const registration = queue.shift();
+      if (!registration) break;
+
+      try {
+        const { diff } = await recheckRegistration(registration);
+        diffs.push(diff);
+      } catch (error) {
+        errors.push({
+          registrationId: registration.id,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, registrations.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+
+  return { diffs, errors };
 }
 
 export async function refreshAllContributors(): Promise<RefreshAllSummary> {
   const registrations = await prisma.registration.findMany();
 
-  const outcomes = await Promise.all(
-    registrations.map((registration) => recheckRegistration(registration))
+  const { diffs, errors } = await recheckAllWithConcurrency(
+    registrations,
+    getBatchConcurrency()
   );
 
-  const diffs = outcomes.map((outcome) => outcome.diff);
-
   return {
-    refreshed: registrations.length,
+    refreshed: diffs.length,
     changed: diffs.filter((diff) => diff.changed).length,
     diffs,
+    errors,
   };
 }
 
