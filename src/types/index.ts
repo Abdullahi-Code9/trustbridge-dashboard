@@ -81,8 +81,8 @@ export type AuditAction =
   | "recheck.self_service"
   | "registration.create"
   | "registration.update"
-  | "webhook.org_membership_changed"
-  | "network_config_mismatch_detected";
+  | "network_config_mismatch_detected"
+  | "contract.sync";
 
 export interface AuditLogEntry {
   id: string;

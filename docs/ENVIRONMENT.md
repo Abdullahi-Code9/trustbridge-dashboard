@@ -186,6 +186,17 @@ Soroban RPC endpoint used to fetch contract events for the timeline panel. Defau
 
 **Keep this on the same network as `NEXT_PUBLIC_HORIZON_URL` above.** The default here is testnet while the default Horizon URL is mainnet — see the network consistency note above and [Architecture — network hardening](./ARCHITECTURE.md#network-hardening) for how the mismatch is surfaced.
 
+### `CRON_SECRET`
+
+Bearer token that authorizes a scheduler (e.g. Vercel Cron) to trigger `POST /api/contract-sync` without a maintainer session. Send as `Authorization: Bearer $CRON_SECRET`.
+
+- **Optional.** With it unset, only maintainer sessions can trigger a sync — the endpoint never falls back to an open/unauthenticated trigger.
+- Generate the same way as `NEXTAUTH_SECRET`: `openssl rand -base64 32`
+
+### `CONTRACT_SYNC_MIN_INTERVAL_MS`
+
+Minimum time between `/api/contract-sync` runs; a trigger inside this window returns `{ status: "skipped" }` instead of re-running Horizon checks for every registration. Defaults to `60000` (1 minute).
+
 ---
 
 ## Vercel configuration

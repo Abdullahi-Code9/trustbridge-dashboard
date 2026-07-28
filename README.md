@@ -195,7 +195,13 @@ All docs are cross-linked from this README:
 | `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` — **publicly cached** (30 s TTL) |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
-| `/api/health` | GET | Liveness + readiness probe — DB ping and CSV staleness check (public, always 200) |
+| `/api/health` | GET | Liveness + readiness probe — DB ping, CSV staleness, and contract-sync status (public, always 200) |
+| `/api/contract-sync` | GET/POST | GET: last sync result (public). POST: trigger a contract-to-Postgres sync (maintainer session or `CRON_SECRET`) |
+
+### Contract-to-Postgres sync job
+
+- **`src/lib/contract-sync.ts`** re-syncs Postgres registration state against Horizon-verified funded/trustline/balance state, intended to be driven by a scheduler (e.g. Vercel Cron) rather than a maintainer clicking "recheck all". Trigger with `POST /api/contract-sync` (maintainer session, or a scheduler presenting `Authorization: Bearer $CRON_SECRET`); read the last run via `GET /api/contract-sync` or the `contractSync` block of `/api/health`.
+- Rate-limited via `CONTRACT_SYNC_MIN_INTERVAL_MS` (default 60s) so a mis-configured scheduler can't fan out into repeated full-table Horizon sweeps, and never throws — Horizon/RPC outages and DB errors are captured in the result instead of raising a 500.
 
 ### Resilience
 
