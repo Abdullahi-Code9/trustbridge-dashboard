@@ -80,7 +80,7 @@ export function RegisterClient() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       {maintainerError && (
-        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/40 dark:bg-amber-950/40 dark:text-amber-200">
           Maintainer dashboard requires membership in the configured GitHub
           organization. You can still register your Stellar address here.
         </div>
