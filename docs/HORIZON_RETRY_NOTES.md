@@ -18,6 +18,16 @@ When the breaker is **OPEN**, `checkStellarAddress` returns a `not_ready` result
 
 This prevents wasted network calls, protects Horizon rate limits, and keeps the maintainer batch re-check (`POST /api/contributors`) from stalling when Horizon is down.
 
+## Batch re-check concurrency
+
+`refreshAllContributors` (`src/lib/registrations.ts`) re-checks every registration through a small worker pool instead of firing one Horizon request per contributor at once — at 100+ contributors, an unbounded burst risks tripping Horizon rate limits.
+
+| Config env var | Default | Description |
+|----------------|---------|-------------|
+| `HORIZON_BATCH_CONCURRENCY` | 5 | Max registrations rechecked concurrently during a batch re-check |
+
+A failure on one registration (e.g. a transient DB error persisting the result) is recorded in the batch summary's `errors` array and does not abort the rest of the batch.
+
 ## Retryable cases
 
 - Rate limiting.

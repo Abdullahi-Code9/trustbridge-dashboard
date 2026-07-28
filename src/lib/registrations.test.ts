@@ -5,8 +5,13 @@ vi.mock("@/lib/prisma", () => ({
     registration: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
+}));
+
+vi.mock("@/lib/horizon", () => ({
+  checkStellarAddress: vi.fn(),
 }));
 
 vi.mock("@/lib/readiness", () => ({
@@ -36,7 +41,36 @@ vi.mock("@/lib/cursor-pagination", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { toContributorRow, getContributorsPaginated } from "@/lib/registrations";
+import { checkStellarAddress } from "@/lib/horizon";
+import {
+  toContributorRow,
+  getContributorsPaginated,
+  refreshAllContributors,
+} from "@/lib/registrations";
+
+function makeRegistration(id: string) {
+  return {
+    id,
+    stellarAddress: `G${id}BUQWP3BOUZX34ULNQG23RQ6F4YUSXHTGSNLAYWBEJCLLWTG5V5TGO7Z`,
+    funded: false,
+    trustlineReady: false,
+    trustlineAuthorized: false,
+    xlmBalance: "0",
+    spendableXlmBalance: "0",
+    lastCheckedAt: null,
+  };
+}
+
+const readyCheckResult = {
+  funded: true,
+  trustline: true,
+  trustline_authorized: true,
+  verified: true,
+  xlm_balance: "10",
+  spendable_xlm_balance: "8",
+  readiness: "ready" as const,
+  errors: [],
+};
 
 describe("Registrations", () => {
   beforeEach(() => {
@@ -171,6 +205,101 @@ describe("Registrations", () => {
       expect(result.contributors).toHaveLength(2);
       expect(result.hasMore).toBe(false);
       expect(result.nextCursor).toBeNull();
+    });
+  });
+
+  describe("refreshAllContributors", () => {
+    beforeEach(() => {
+      delete process.env.HORIZON_BATCH_CONCURRENCY;
+    });
+
+    it("rechecks every registration and reports how many changed", async () => {
+      const registrations = [
+        makeRegistration("1"),
+        makeRegistration("2"),
+        makeRegistration("3"),
+      ];
+
+      vi.mocked(prisma.registration.findMany).mockResolvedValueOnce(
+        registrations as any
+      );
+      vi.mocked(checkStellarAddress).mockResolvedValue(readyCheckResult);
+      vi.mocked(prisma.registration.update).mockImplementation(
+        async ({ where, data }: any) => ({
+          ...registrations.find((r) => r.id === where.id),
+          ...data,
+        })
+      );
+
+      const summary = await refreshAllContributors();
+
+      expect(summary.refreshed).toBe(3);
+      expect(summary.changed).toBe(3);
+      expect(summary.errors).toEqual([]);
+      expect(prisma.registration.update).toHaveBeenCalledTimes(3);
+    });
+
+    it("respects HORIZON_BATCH_CONCURRENCY instead of firing every check at once", async () => {
+      process.env.HORIZON_BATCH_CONCURRENCY = "2";
+      const registrations = Array.from({ length: 5 }, (_, i) =>
+        makeRegistration(String(i + 1))
+      );
+
+      vi.mocked(prisma.registration.findMany).mockResolvedValueOnce(
+        registrations as any
+      );
+
+      let inFlight = 0;
+      let maxInFlight = 0;
+      vi.mocked(checkStellarAddress).mockImplementation(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight--;
+        return readyCheckResult;
+      });
+      vi.mocked(prisma.registration.update).mockImplementation(
+        async ({ where, data }: any) => ({
+          ...registrations.find((r) => r.id === where.id),
+          ...data,
+        })
+      );
+
+      const summary = await refreshAllContributors();
+
+      expect(summary.refreshed).toBe(5);
+      expect(maxInFlight).toBeLessThanOrEqual(2);
+    });
+
+    it("isolates a per-registration failure instead of losing the whole batch", async () => {
+      const registrations = [
+        makeRegistration("1"),
+        makeRegistration("2"),
+        makeRegistration("3"),
+      ];
+
+      vi.mocked(prisma.registration.findMany).mockResolvedValueOnce(
+        registrations as any
+      );
+      vi.mocked(checkStellarAddress).mockResolvedValue(readyCheckResult);
+      vi.mocked(prisma.registration.update).mockImplementation(
+        async ({ where, data }: any) => {
+          if (where.id === "2") {
+            throw new Error("connection terminated unexpectedly");
+          }
+          return {
+            ...registrations.find((r) => r.id === where.id),
+            ...data,
+          };
+        }
+      );
+
+      const summary = await refreshAllContributors();
+
+      expect(summary.refreshed).toBe(2);
+      expect(summary.errors).toEqual([
+        { registrationId: "2", message: "connection terminated unexpectedly" },
+      ]);
     });
   });
 });
