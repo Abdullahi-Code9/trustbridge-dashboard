@@ -127,6 +127,17 @@ Every Stellar account locks up `baseReserve * (2 + subentry_count + num_sponsori
 
 ## Optional variables
 
+### `REGISTRY_MODE`
+
+Reported by the contributor REST endpoints (`/api/contributors`, `/api/contributors/paginated`) as `registryMode` in their response body, via `src/lib/registry-mode.ts`.
+
+| Value | Meaning |
+|-------|---------|
+| `live` (default) | Reads reflect whatever is currently persisted; maintainers are expected to trigger a Horizon recheck to refresh it. |
+| `synced` | Signals that a scheduled contract-to-Postgres sync job (see `CONTRACT_SYNC_MIN_INTERVAL_MS` above) is responsible for keeping registrations fresh. |
+
+Reads are identical in both modes — Postgres is always the source of truth. An unset or unrecognized value falls back to `live` rather than failing.
+
 ### `GITHUB_MAINTAINER_TEAM`
 
 GitHub team **slug** within `GITHUB_MAINTAINER_ORG`. When set, a user must belong to both the org **and** this team to be treated as a maintainer.

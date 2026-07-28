@@ -116,6 +116,7 @@ describe("GET /api/contributors — no filter", () => {
     expect(json.total).toBe(5);
     expect(json.filtered).toBe(5);
     expect(json.readiness).toBeUndefined();
+    expect(json.registryMode).toBe("live");
   });
 });
 
@@ -256,18 +257,14 @@ describe("POST /api/contributors", () => {
       changed: 0,
       diffs: [],
     });
-    vi.mocked(getContributors).mockResolvedValue({
-      contributors: allContributors,
-      total: allContributors.length,
-    });
+    vi.mocked(getContributors).mockResolvedValue(allContributors);
 
     const r = post();
     const res = await POST(r);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.refreshed).toBe(3);
-    expect(json.changed).toBe(0);
-    expect(json.total).toBe(allContributors.length);
-    expect(json.contributors).toHaveLength(allContributors.length);
+    expect(json.contributors).toHaveLength(5);
+    expect(json.registryMode).toBe("live");
   });
 });

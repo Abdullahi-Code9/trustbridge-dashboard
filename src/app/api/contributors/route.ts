@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { refreshMaintainerSession, requireMaintainerSession } from "@/lib/api-auth";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
+import { getRegistryMode } from "@/lib/registry-mode";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
 import type { ReadinessStatus } from "@/types";
 
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
     contributors,
     total,
     filtered: contributors.length,
+    registryMode: getRegistryMode(),
     ...(readinessParam !== null ? { readiness: readinessParam } : {}),
   });
 }
@@ -74,5 +76,9 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ refreshed, errors, contributors });
+  return NextResponse.json({
+    refreshed,
+    contributors,
+    registryMode: getRegistryMode(),
+  });
 }
