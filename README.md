@@ -207,6 +207,31 @@ All docs are cross-linked from this README:
 
 `src/middleware.ts` protects `/register` (requires sign-in) and `/dashboard` (requires sign-in + `GITHUB_MAINTAINER_ORG` membership).
 
+### GitHub Organization Membership Webhook
+
+The dashboard listens for GitHub organization membership changes via webhook at `/api/webhooks/github-org-membership`. When a member is added to or removed from your maintainer organization, the webhook records an audit entry, allowing the system to track membership changes.
+
+**Setup:**
+
+1. Generate a webhook secret:
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. Set `GITHUB_WEBHOOK_SECRET` in your `.env.local`:
+   ```bash
+   GITHUB_WEBHOOK_SECRET=<generated-secret>
+   ```
+
+3. Configure the webhook in your GitHub organization:
+   - Go to Organization Settings → Webhooks → Add webhook
+   - Payload URL: `https://your-domain.com/api/webhooks/github-org-membership`
+   - Content type: `application/json`
+   - Secret: The same secret from step 1
+   - Events: Select "Organization" and check "Member"
+
+The webhook endpoint returns HTTP 202 (Accepted) for all webhook deliveries to prevent GitHub retry storms. Processing is logged and failures are captured in the audit log.
+
 ### Security
 
 - **CSRF protection** — All mutating API routes validate the `Origin` / `Referer` header against the application's host. See [docs/CSRF.md](./docs/CSRF.md).
@@ -235,13 +260,45 @@ NEXT_PUBLIC_MIN_XLM_BALANCE=1
 NEXT_PUBLIC_BASE_RESERVE_XLM=0.5  # optional, Stellar base reserve used for spendable-balance checks
 SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
 SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
+GITHUB_WEBHOOK_SECRET= # optional, for verifying GitHub organization membership webhooks
 ```
 
 > **Note:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` should point at the same Stellar network. Their defaults don't (mainnet vs. testnet) — the dashboard detects and warns on this mismatch via `/api/settings/network` and the maintainer dashboard's network status panel, and records it to the audit log.
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.
 
+### Environment Validation on Boot
+
+The dashboard validates all environment variables using Zod at startup (`src/lib/env-validation.ts`). This schema:
+
+- **Ensures required fields are present** — missing `GITHUB_CLIENT_ID`, `DATABASE_URL`, etc. will fail fast
+- **Casts numeric values** — `RATE_LIMIT_MAX_REQUESTS` → number, `NEXT_PUBLIC_MIN_XLM_BALANCE` → float
+- **Validates URLs** — `DATABASE_URL`, `NEXTAUTH_URL`, `SOROBAN_RPC_URL` must be valid URLs
+- **Provides defaults** — optional fields like `NEXT_PUBLIC_HORIZON_URL` default to Stellar mainnet
+- **Fails on startup** — invalid configuration is caught before any route handlers run
+
+Use `validateEnv()` or `getValidatedEnv()` to get the fully typed, validated configuration:
+
+```typescript
+import { getValidatedEnv } from "@/lib/env-validation";
+
+const env = getValidatedEnv();
+// env is strongly typed and guaranteed valid
+```
+
 Generate `NEXTAUTH_SECRET`:
+
+```bash
+openssl rand -base64 32
+```
+
+Generate `TOKEN_ENCRYPTION_KEY`:
+
+```bash
+openssl rand -base64 32
+```
+
+Generate `GITHUB_WEBHOOK_SECRET` (if using org membership sync):
 
 ```bash
 openssl rand -base64 32
