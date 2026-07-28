@@ -191,14 +191,15 @@ All docs are cross-linked from this README:
 | `/api/contributors` | GET/POST | List contributors / batch re-check (maintainer only) | — |
 | `/api/contributors/[id]` | POST | Re-check a **single** contributor via Horizon (maintainer only) |
 | `/api/audit` | GET | Recent maintainer actions — audit log (maintainer only) |
-| `/api/stats` | GET | Aggregate readiness statistics | — |
-| `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` |
+| `/api/stats` | GET | Aggregate readiness statistics — **publicly cached** (`Cache-Control: public, max-age=<ttl>, stale-while-revalidate`) | — |
+| `/api/actions/lookup` | GET | Cached Horizon readiness lookup + wizard `nextAction` guidance, `?address=G...` — **publicly cached** (30 s TTL) |
 | `/api/soroban/events` | GET | Recent events for `SOROBAN_CONTRACT_ID` (maintainer only) |
 | `/api/settings/network` | GET | Resolved Horizon/Soroban network + mismatch warnings (maintainer only) |
 | `/api/health` | GET | Liveness + readiness probe — DB ping and CSV staleness check (public, always 200) |
 
 ### Resilience
 
+- **Stats API cache headers** — `GET /api/stats` and `GET /api/actions/lookup` emit `Cache-Control: public, max-age=<ttl>, stale-while-revalidate=<swr>` so CDN edges (Vercel Edge Network, Cloudflare, etc.) and browsers serve cached responses without hitting the origin. Two layers cooperate: an **in-process `statsCache`** (default 60 s TTL, controlled by `STATS_CACHE_TTL_MS`) eliminates redundant DB queries within a server instance, and the **HTTP headers** let the CDN cache aggregate stats globally. The cache is automatically evicted whenever contributor readiness changes (batch recheck, single recheck). The lookup endpoint uses a shorter fixed 30 s TTL to keep wizard validation fresh. Neither endpoint exposes contributor PII — only aggregate counts and per-address Horizon results are returned.
 - **Background recheck queue** — `src/lib/background-queue.ts` implements an in-memory job queue for Horizon rechecks. All recheck requests (batch and single) are queued and processed with a default concurrency limit of 2. This prevents Horizon rate-limit exhaustion and allows maintainers to request rechecks without blocking. Check queue status and job results via `/api/contributors/queue/status` and `/api/contributors/queue/jobs/[jobId]`. Configurable concurrency via code (currently hardcoded at 2 jobs max). Job history is retained in memory (last 100 completed jobs).
 - **Horizon circuit breaker** — `src/lib/circuit-breaker.ts` wraps Horizon API calls. After 5 consecutive failures, the breaker opens and fast-fails for 30s, returning a friendly "Horizon is temporarily unavailable" message. Configurable via `HORIZON_CB_FAILURE_THRESHOLD`, `HORIZON_CB_RECOVERY_MS`, and `HORIZON_CB_SUCCESS_THRESHOLD`.
 - **Stale CSV export guard** — `src/lib/stale-export.ts` checks `lastCheckedAt` timestamps before CSV export. If any contributor hasn't been verified within the configured window (default 24h), the dashboard shows an amber warning banner and requires confirmation before exporting. Configurable via `STALE_CSV_MAX_AGE_MS`.
@@ -271,10 +272,13 @@ NEXT_PUBLIC_MIN_XLM_BALANCE=1
 NEXT_PUBLIC_BASE_RESERVE_XLM=0.5  # optional, Stellar base reserve used for spendable-balance checks
 SOROBAN_CONTRACT_ID=   # optional, future on-chain registry + event timeline panel
 SOROBAN_RPC_URL=       # optional, defaults to soroban-testnet.stellar.org
-GITHUB_WEBHOOK_SECRET= # optional, for verifying GitHub organization membership webhooks
+STATS_CACHE_TTL_MS=    # optional, in-process + HTTP cache TTL for /api/stats (default 60000 ms = 60 s)
+CHECK_CACHE_TTL_MS=    # optional, in-process cache TTL for /api/check responses (default 120000 ms = 2 min)
 ```
 
 > **Note:** `NEXT_PUBLIC_HORIZON_URL` and `SOROBAN_RPC_URL` should point at the same Stellar network. Their defaults don't (mainnet vs. testnet) — the dashboard detects and warns on this mismatch via `/api/settings/network` and the maintainer dashboard's network status panel, and records it to the audit log.
+
+> **Caching:** `STATS_CACHE_TTL_MS` controls both the in-process `statsCache` TTL and the `max-age` value in the `Cache-Control` header emitted by `GET /api/stats`. Setting it to `0` or a non-numeric value falls back to the 60 s default. To disable CDN caching entirely during local development, set `STATS_CACHE_TTL_MS=1` (1 ms expires immediately in the in-process cache and produces `max-age=0` in the header).
 
 See [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md) for details.
 

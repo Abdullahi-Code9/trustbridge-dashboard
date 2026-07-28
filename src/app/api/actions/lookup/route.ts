@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildActionLookupResult } from "@/lib/action-lookup";
-import { buildCacheKey, verificationCache } from "@/lib/cache";
+import { buildCacheKey, buildLookupCacheHeaders, verificationCache } from "@/lib/cache";
 import { DEFAULT_ASSET } from "@/lib/constants";
 import { checkStellarAddress } from "@/lib/horizon";
 import { isValidStellarAddress } from "@/lib/stellar";
@@ -47,5 +47,7 @@ export async function GET(request: NextRequest) {
     LOOKUP_CACHE_TTL_MS
   );
 
-  return NextResponse.json(result);
+  return NextResponse.json(result, {
+    headers: buildLookupCacheHeaders(LOOKUP_CACHE_TTL_MS),
+  });
 }
