@@ -44,16 +44,17 @@ describe("csv-export", () => {
   it("should build CSV with correct headers and data", () => {
     const csv = buildContributorsCsv(mockContributors);
 
-    expect(csv).toContain("id,githubUsername,stellarAddress");
+    expect(csv).toContain('"id","githubUsername","stellarAddress"');
     expect(csv).toContain('"1","alice"');
     expect(csv).toContain('"2","bob"');
-    expect(csv).toContain("ready");
-    expect(csv).toContain("not_ready");
+    expect(csv).toContain('"ready"');
+    expect(csv).toContain('"not_ready"');
+    expect(csv).toContain("TrustBridge Freighter ownership proof");
   });
 
   it("should handle empty contributor list", () => {
     const csv = buildContributorsCsv([]);
-    expect(csv).toContain("id,githubUsername,stellarAddress");
+    expect(csv).toContain('"id","githubUsername","stellarAddress"');
   });
 
   it("should escape CSV special characters correctly", () => {
@@ -95,10 +96,7 @@ describe("csv-export", () => {
     };
 
     const csv = buildContributorsCsv([contributor]);
-    const lines = csv.split("\n");
-    const lastColumn = lines[1].split(",").pop();
-
-    expect(lastColumn).toBe('""');
+    expect(csv).toContain('"ready","","All Horizon readiness checks currently pass for this row."');
   });
 
   it("should format boolean values as yes/no", () => {
@@ -106,5 +104,18 @@ describe("csv-export", () => {
 
     expect(csv).toContain('"yes"');
     expect(csv).toContain('"no"');
+  });
+
+  it("derives debug and proof fields when they are missing on the row", () => {
+    const csv = buildContributorsCsv([
+      {
+        ...mockContributors[1],
+        walletProof: undefined,
+        horizonDebug: undefined,
+      },
+    ]);
+
+    expect(csv).toContain("Required USDC trustline is missing.");
+    expect(csv).toContain("TrustBridge Freighter ownership proof");
   });
 });

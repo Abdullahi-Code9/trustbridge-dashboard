@@ -25,7 +25,7 @@ export async function GET() {
   }
 
   // Contributor readiness snapshot
-  const contributors = await getContributors();
+  const { contributors } = await getContributors();
   const readinessSummary = summarizeContributors(contributors);
 
   const byStatus = {

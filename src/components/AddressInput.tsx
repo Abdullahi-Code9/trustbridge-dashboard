@@ -71,6 +71,10 @@ export function AddressInput({
     <div className={cn("space-y-3", className)}>
       <div className="space-y-2">
         <Label htmlFor="stellar-address">Stellar public address (G...)</Label>
+        <p id="stellar-address-help" className="text-xs text-muted-foreground">
+          Paste the public payout address only. We validate funding, trustline,
+          authorization, and spendable XLM through Horizon.
+        </p>
         <div className="relative">
           <Input
             id="stellar-address"
@@ -81,6 +85,7 @@ export function AddressInput({
             className="font-mono pr-10"
             spellCheck={false}
             autoComplete="off"
+            aria-describedby="stellar-address-help"
           />
           {checking && (
             <Loader2 className="absolute right-3 top-2.5 h-5 w-5 animate-spin text-muted-foreground" />
@@ -89,7 +94,7 @@ export function AddressInput({
       </div>
 
       {result && (
-        <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+        <div className="rounded-lg border bg-muted/40 p-4 space-y-3" aria-live="polite">
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm font-medium">Readiness</span>
             <TrustlineStatusBadge status={result.readiness} />

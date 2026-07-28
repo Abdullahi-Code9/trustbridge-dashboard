@@ -12,7 +12,7 @@ backgroundQueue.registerHandler("recheck.batch", async (job: Job) => {
 
   try {
     const refreshed = await refreshAllContributors();
-    const contributors = await getContributors();
+    const { contributors } = await getContributors();
 
     job.result = {
       refreshed,
@@ -33,11 +33,13 @@ backgroundQueue.registerHandler("recheck.single", async (job: Job) => {
   }
 
   try {
-    const contributor = await refreshContributor(contributorId);
+    const result = await refreshContributor(contributorId);
 
-    if (!contributor) {
+    if (!result) {
       throw new Error(`Contributor ${contributorId} not found`);
     }
+
+    const { contributor } = result;
 
     job.result = {
       contributorId,

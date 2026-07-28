@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const contributors = await getContributors();
+    const { contributors, total } = await getContributors();
 
     if (contributors.length === 0) {
       return NextResponse.json(
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
       actorId: session.user.id,
       actorLogin: session.user.githubUsername ?? null,
       metadata: {
-        contributorCount: contributors.length,
+        contributorCount: total,
         filename,
       },
     });

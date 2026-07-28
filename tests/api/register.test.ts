@@ -23,6 +23,10 @@ vi.mock("@/lib/soroban-register", () => ({
   mirrorRegistrationToSoroban: vi.fn(),
 }));
 
+vi.mock("@/lib/audit", () => ({
+  recordAuditLog: vi.fn(),
+}));
+
 import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
@@ -43,6 +47,9 @@ function post(body: unknown, headers?: Record<string, string>) {
 }
 
 describe("POST /api/register", () => {
+  const validAddress =
+    "GDXNXL25GDM3N5LAR5FALA3VSGHFET3EOKLXRP3ITPPMR3PISTQSKSFS";
+
   it("rejects cross-origin requests before touching session or DB", async () => {
     const r = post({ stellarAddress: "GBSX" }, {
       origin: "https://evil.com",
@@ -88,7 +95,7 @@ describe("POST /api/register", () => {
 
   it("returns 200 for valid same-origin session registration", async () => {
     vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "user-1" },
+      user: { id: "user-1", githubUsername: "gidson5" },
     } as any);
     vi.mocked(prisma.registration.findUnique).mockResolvedValue(null);
     vi.mocked(checkStellarAddress).mockResolvedValue({
@@ -105,7 +112,7 @@ describe("POST /api/register", () => {
     vi.mocked(prisma.registration.upsert).mockResolvedValue({
       id: "reg-1",
       userId: "user-1",
-      stellarAddress: "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ",
+      stellarAddress: validAddress,
       funded: true,
       trustlineReady: true,
       trustlineAuthorized: true,
@@ -121,15 +128,18 @@ describe("POST /api/register", () => {
     });
 
     const r = post({
-      stellarAddress: "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ",
+      stellarAddress: validAddress,
     });
     const res = await POST(r);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.registration.stellarAddress).toBe(
-      "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ"
+    expect(json.registration.stellarAddress).toBe(validAddress);
+    expect(json.registration.walletProof.provider).toBe("Freighter");
+    expect(json.registration.walletProof.challenge).toContain(
+      "GitHub handle: @gidson5"
     );
+    expect(json.registration.horizonDebug.summary).toContain("All Horizon");
     expect(mirrorRegistrationToSoroban).toHaveBeenCalled();
   });
 });

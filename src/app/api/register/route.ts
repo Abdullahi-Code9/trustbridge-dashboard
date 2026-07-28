@@ -7,7 +7,12 @@ import { DEFAULT_ASSET } from "@/lib/constants";
 import { assertSameOrigin } from "@/lib/csrf";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
+import {
+  buildWalletProofInfo,
+  buildHorizonDebugInfo,
+} from "@/lib/registration-insights";
 import { validateRegistrationInput } from "@/lib/register-validation";
+import { computeReadiness } from "@/lib/readiness";
 import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
 
 export const runtime = "nodejs";
@@ -107,6 +112,19 @@ export async function POST(request: NextRequest) {
         verified: horizonResult.verified,
         xlm_balance: registration.xlmBalance,
         spendable_xlm_balance: registration.spendableXlmBalance,
+        walletProof: buildWalletProofInfo(
+          registration.stellarAddress,
+          session.user.githubUsername ?? null
+        ),
+        horizonDebug: buildHorizonDebugInfo({
+          funded: registration.funded,
+          trustlineReady: registration.trustlineReady,
+          trustlineAuthorized: registration.trustlineAuthorized,
+          readiness: horizonResult.readiness,
+          xlmBalance: registration.xlmBalance,
+          spendableXlmBalance: registration.spendableXlmBalance,
+          lastCheckedAt: registration.lastCheckedAt.toISOString(),
+        }),
       },
     });
   } catch {
@@ -128,5 +146,37 @@ export async function GET() {
     where: { userId: session.user.id },
   });
 
-  return NextResponse.json({ registration });
+  if (!registration) {
+    return NextResponse.json({ registration: null });
+  }
+
+  const readiness = computeReadiness(
+    registration.funded,
+    registration.trustlineReady,
+    registration.xlmBalance,
+    {
+      authorized: registration.trustlineAuthorized,
+      spendableBalance: registration.spendableXlmBalance,
+    }
+  );
+
+  return NextResponse.json({
+    registration: {
+      ...registration,
+      readiness,
+      walletProof: buildWalletProofInfo(
+        registration.stellarAddress,
+        session.user.githubUsername ?? null
+      ),
+      horizonDebug: buildHorizonDebugInfo({
+        funded: registration.funded,
+        trustlineReady: registration.trustlineReady,
+        trustlineAuthorized: registration.trustlineAuthorized,
+        readiness,
+        xlmBalance: registration.xlmBalance,
+        spendableXlmBalance: registration.spendableXlmBalance,
+        lastCheckedAt: registration.lastCheckedAt?.toISOString() ?? null,
+      }),
+    },
+  });
 }

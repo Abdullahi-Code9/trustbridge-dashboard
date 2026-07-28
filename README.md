@@ -29,8 +29,15 @@
 | Audience | Capability |
 |----------|------------|
 | **Contributors** | Sign in with GitHub OAuth, register a Stellar G-address, get live Horizon validation (funding, USDC trustline, XLM reserve), view outreach template examples |
-| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, Wave prep workspace with stats and bulk export (CSV/JSON), generate outreach templates for contributors, review recent Soroban contract events |
+| **Maintainers** | View all registrations, filter by readiness, batch re-check via Horizon, review per-row Horizon diagnostics, use an accessible desktop table or mobile card layout, export enriched CSV/JSON data, generate outreach templates for contributors, review recent Soroban contract events |
 | **Everyone** | Public landing page with Wave readiness stats |
+
+### Wallet proof and dashboard diagnostics
+
+- **Freighter ownership proof** — the `/register` flow now generates a deterministic message-signing challenge tied to the contributor's GitHub handle and Stellar payout address. Contributors can copy that challenge and sign it in Freighter when maintainers need wallet ownership proof.
+- **Per-row Horizon debug panel** — each dashboard row exposes the current readiness summary, the next recommended action, and the underlying funded/trustline/reserve checkpoints used for payout decisions.
+- **Accessible responsive table** — the maintainer table includes captioned headers, sortable column labels with `aria-sort`, and a mobile card layout so contributor readiness stays reviewable on smaller screens.
+- **Export parity** — CSV and JSON exports now include the Horizon debug summary, recommended next action, and Freighter proof challenge so maintainer reviews stay consistent outside the UI.
 
 ### Outreach templates
 
@@ -237,6 +244,7 @@ The webhook endpoint returns HTTP 202 (Accepted) for all webhook deliveries to p
 - **CSRF protection** — All mutating API routes validate the `Origin` / `Referer` header against the application's host. See [docs/CSRF.md](./docs/CSRF.md).
 - **Rate limiting** — `POST /api/check` is rate-limited per IP (default 10 requests per minute) to prevent Horizon API abuse. Configure via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_REQUESTS`.
 - **CSV / JSON exports** — Maintainer dashboard exports contributor data as CSV or JSON. Export helpers live in `src/lib/csv.ts` and are covered by snapshot tests.
+- **Freighter proof workflow** — `GET/POST /api/register` returns `walletProof` and `horizonDebug` metadata alongside the registration so the register page, dashboard table, and exports can render the same ownership-proof and troubleshooting guidance.
 
 ---
 

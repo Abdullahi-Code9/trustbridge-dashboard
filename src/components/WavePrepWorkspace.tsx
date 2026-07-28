@@ -30,7 +30,7 @@ export function WavePrepWorkspace({
 }: WavePrepWorkspaceProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<
     Set<ReadinessStatus>
-  >(new Set(["ready", "low_reserve", "not_ready"]));
+  >(new Set<ReadinessStatus>(["ready", "low_reserve", "not_ready"]));
 
   const stats = useMemo(() => {
     return {

@@ -1,5 +1,23 @@
 export type ReadinessStatus = "ready" | "low_reserve" | "not_ready";
 
+export interface WalletProofInfo {
+  provider: "Freighter";
+  method: "signMessage";
+  challenge: string;
+  instructions: string[];
+  fallback: string;
+}
+
+export interface HorizonDebugInfo {
+  summary: string;
+  nextAction: string;
+  checkpoints: Array<{
+    label: string;
+    value: string;
+  }>;
+  warnings: string[];
+}
+
 export interface HorizonCheckResult {
   funded: boolean;
   trustline: boolean;
@@ -53,6 +71,8 @@ export interface ContributorRow {
   lastCheckedAt: string | null;
   horizonLatencyMs: number | null;
   readiness: ReadinessStatus;
+  walletProof?: WalletProofInfo;
+  horizonDebug?: HorizonDebugInfo;
 }
 
 export type AuditAction =

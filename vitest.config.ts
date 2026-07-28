@@ -14,6 +14,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    environmentMatchGlobs: [
+      ["src/**/*.test.tsx", "jsdom"],
+      ["tests/**/*.test.tsx", "jsdom"],
+    ],
+    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"],
+    setupFiles: ["./tests/setup.ts"],
   },
 });

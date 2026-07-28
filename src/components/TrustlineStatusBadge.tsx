@@ -1,5 +1,7 @@
 "use client";
 
+import React from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { getReadinessConfig } from "@/lib/readiness";
 import type { ReadinessStatus } from "@/types";
