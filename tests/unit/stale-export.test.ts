@@ -3,6 +3,7 @@ import {
   isExportStale,
   getStaleContributors,
   buildStalenessSummary,
+  filterContributorsByDateRange,
 } from "@/lib/stale-export";
 import type { ContributorRow } from "@/types";
 
@@ -104,5 +105,31 @@ describe("buildStalenessSummary", () => {
     expect(summary.stalePercent).toBe(50);
     expect(summary.allowExport).toBe(false);
     expect(summary.warning).toContain("1 of 2 contributors (50%)");
+  });
+});
+
+describe("filterContributorsByDateRange", () => {
+  it("returns only contributors checked after threshold", () => {
+    const twoHoursAgo = Date.now() - 7200000;
+    const oneHourAgo = Date.now() - 3600000;
+    const fresh = makeRow(new Date(oneHourAgo).toISOString());
+    const old = makeRow(new Date(twoHoursAgo).toISOString());
+
+    const result = filterContributorsByDateRange([fresh, old], oneHourAgo - 1000);
+    expect(result).toHaveLength(1);
+    expect(result[0].githubUsername).toBe("test");
+  });
+
+  it("excludes contributors with null lastCheckedAt", () => {
+    const fresh = makeRow(new Date().toISOString());
+    const unchecked = makeRow(null);
+    const result = filterContributorsByDateRange([fresh, unchecked], Date.now() - 86400000);
+    expect(result).toHaveLength(1);
+  });
+
+  it("returns empty when no contributors match date range", () => {
+    const old = makeRow(new Date(Date.now() - 7200000).toISOString());
+    const result = filterContributorsByDateRange([old], Date.now());
+    expect(result).toHaveLength(0);
   });
 });

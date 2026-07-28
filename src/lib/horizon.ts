@@ -155,6 +155,7 @@ export async function checkStellarAddress(
     );
     const trustline = Boolean(trustlineBalance);
     const trustlineAuthorized = isTrustlineAuthorized(trustlineBalance);
+    const usdcBalance = (trustlineBalance && "balance" in trustlineBalance) ? trustlineBalance.balance : "0";
 
     const result = buildCheckResult(
       true,
@@ -162,7 +163,9 @@ export async function checkStellarAddress(
       xlmBalance,
       [],
       trustlineAuthorized,
-      spendableXlmBalance
+      spendableXlmBalance,
+      usdcBalance,
+      latencyMs
     );
 
     if (useCache) verificationCache.set(cacheKey, result);

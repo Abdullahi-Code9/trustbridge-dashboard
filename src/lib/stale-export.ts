@@ -59,6 +59,23 @@ export function getStaleContributors(
 }
 
 /**
+ * Filter contributors by last-checked date range.
+ * @param contributors - Contributors to filter
+ * @param afterMs - Only include contributors checked after this timestamp (ms since epoch)
+ * @returns Filtered contributors within the date range
+ */
+export function filterContributorsByDateRange(
+  contributors: ContributorRow[],
+  afterMs: number
+): ContributorRow[] {
+  return contributors.filter((c) => {
+    const checked = parseLastCheckedAt(c.lastCheckedAt);
+    if (!checked) return false;
+    return checked.getTime() >= afterMs;
+  });
+}
+
+/**
  * Build a human-readable staleness summary for display.
  */
 export function buildStalenessSummary(
