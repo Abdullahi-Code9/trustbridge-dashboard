@@ -3,6 +3,11 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  esbuild: {
+    // tsconfig uses "jsx": "preserve" for Next.js; Vitest needs the automatic
+    // runtime transform so `.tsx` component tests get `jsx-runtime` imports.
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

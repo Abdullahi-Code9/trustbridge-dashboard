@@ -65,8 +65,8 @@ describe("CSV stats validation", () => {
 
     const csv = buildCsv(headers, rows);
 
-    // Verify CSV structure
-    expect(csv).toContain("id,username,status,ready_count,export_version");
+    // Verify CSV structure (cells are always quoted)
+    expect(csv).toContain('"id","username","status","ready_count","export_version"');
     expect(csv).toContain("alice");
     expect(csv).toContain("bob");
     expect(csv).toContain("charlie");
@@ -84,7 +84,7 @@ describe("CSV stats validation", () => {
 
     // Should have header + 2 rows
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe("id,username,status");
+    expect(lines[0]).toBe('"id","username","status"');
   });
 
   it("handles special characters in stats export", () => {

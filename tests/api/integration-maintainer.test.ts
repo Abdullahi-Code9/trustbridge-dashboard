@@ -101,7 +101,10 @@ describe("GET /api/contributors — role enforcement", () => {
 
   it("returns 200 for maintainer role", async () => {
     mockMaintainer();
-    vi.mocked(getContributors).mockResolvedValue([makeContributor("1")]);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: [makeContributor("1")],
+      total: 1,
+    });
     const req = new NextRequest("http://localhost:3000/api/contributors");
     const res = await getContributorsRoute(req);
     expect(res.status).toBe(200);
@@ -120,7 +123,10 @@ describe("GET /api/contributors — readiness filter", () => {
 
   it("returns all contributors when no filter is applied", async () => {
     mockMaintainer();
-    vi.mocked(getContributors).mockResolvedValue(fixtures);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: fixtures,
+      total: fixtures.length,
+    });
     const req = new NextRequest("http://localhost:3000/api/contributors");
     const json = await (await getContributorsRoute(req)).json();
     expect(json.contributors).toHaveLength(3);
@@ -131,7 +137,10 @@ describe("GET /api/contributors — readiness filter", () => {
 
   it("isolates low_reserve contributors via ?readiness=low_reserve", async () => {
     mockMaintainer();
-    vi.mocked(getContributors).mockResolvedValue(fixtures);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: fixtures,
+      total: fixtures.length,
+    });
     const req = new NextRequest(
       "http://localhost:3000/api/contributors?readiness=low_reserve"
     );
@@ -184,8 +193,16 @@ describe("POST /api/contributors — batch recheck", () => {
 
   it("runs batch recheck and returns count + contributors for maintainer", async () => {
     mockMaintainer();
-    vi.mocked(refreshAllContributors).mockResolvedValue(4);
-    vi.mocked(getContributors).mockResolvedValue([makeContributor("1")]);
+    vi.mocked(refreshAllContributors).mockResolvedValue({
+      refreshed: 4,
+      changed: 0,
+      diffs: [],
+      errors: [],
+    });
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: [makeContributor("1")],
+      total: 1,
+    });
     const req = new NextRequest("http://localhost:3000/api/contributors", {
       method: "POST",
       headers: SAME_ORIGIN,
@@ -243,7 +260,15 @@ describe("POST /api/contributors/[id] — single contributor recheck", () => {
   it("returns 200 with refreshed contributor for maintainer", async () => {
     mockMaintainer();
     const contributor = makeContributor("reg-1", "ready");
-    vi.mocked(refreshContributor).mockResolvedValue(contributor);
+    vi.mocked(refreshContributor).mockResolvedValue({
+      contributor,
+      diff: {
+        registrationId: contributor.id,
+        previousReadiness: "not_ready",
+        newReadiness: "ready",
+        changed: true,
+      },
+    });
     const res = await recheckSingle(new Request("http://localhost:3000"), {
       params: { id: "reg-1" },
     });

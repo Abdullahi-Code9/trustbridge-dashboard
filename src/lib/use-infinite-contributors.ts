@@ -24,7 +24,7 @@ export function useInfiniteContributors() {
         limit: String(ITEMS_PER_PAGE),
       });
 
-      if (pageParam) {
+      if (typeof pageParam === "string" && pageParam) {
         params.append("cursor", pageParam);
       }
 

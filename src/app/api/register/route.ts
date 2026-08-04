@@ -87,9 +87,11 @@ export async function POST(request: NextRequest) {
 
     // Mirror registration to Soroban contract (best-effort, non-blocking).
     // Fire-and-forget: don't await or let failures affect the response.
-    mirrorRegistrationToSoroban(registration).catch((error) => {
-      console.error("Soroban registration mirror failed:", error);
-    });
+    void Promise.resolve(mirrorRegistrationToSoroban(registration)).catch(
+      (error) => {
+        console.error("Soroban registration mirror failed:", error);
+      }
+    );
 
     await recordAuditLog({
       action: existing ? "registration.update" : "registration.create",
@@ -123,7 +125,7 @@ export async function POST(request: NextRequest) {
           readiness: horizonResult.readiness,
           xlmBalance: registration.xlmBalance,
           spendableXlmBalance: registration.spendableXlmBalance,
-          lastCheckedAt: registration.lastCheckedAt.toISOString(),
+          lastCheckedAt: registration.lastCheckedAt?.toISOString() ?? null,
         }),
       },
     });

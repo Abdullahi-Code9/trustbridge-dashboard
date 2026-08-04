@@ -19,7 +19,18 @@ const typedStatsCache = statsCache as CacheStore<DashboardStats>;
 /** Cache key used for the single aggregate stats entry. */
 const STATS_CACHE_KEY = buildCacheKey("stats", "dashboard");
 
-type RegistrationWithUser = Registration & {
+type PersistedRegistration = Pick<
+  Registration,
+  | "id"
+  | "stellarAddress"
+  | "funded"
+  | "trustlineReady"
+  | "trustlineAuthorized"
+  | "xlmBalance"
+  | "spendableXlmBalance"
+>;
+
+type RegistrationWithUserRow = Registration & {
   user: { githubUsername: string };
 };
 
@@ -49,6 +60,7 @@ export function toContributorRow(row: RegistrationWithUserRow): ContributorRow {
     spendableXlmBalance: row.spendableXlmBalance,
     usdcBalance: row.usdcBalance,
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
+    horizonLatencyMs: row.horizonLatencyMs ?? null,
     readiness: readinessOf(row),
     walletProof: buildWalletProofInfo(
       row.stellarAddress,

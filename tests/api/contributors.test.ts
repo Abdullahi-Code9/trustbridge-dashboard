@@ -256,8 +256,12 @@ describe("POST /api/contributors", () => {
       refreshed: 3,
       changed: 0,
       diffs: [],
+      errors: [],
     });
-    vi.mocked(getContributors).mockResolvedValue(allContributors);
+    vi.mocked(getContributors).mockResolvedValue({
+      contributors: allContributors,
+      total: allContributors.length,
+    });
 
     const r = post();
     const res = await POST(r);

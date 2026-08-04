@@ -12,7 +12,6 @@ import {
 
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { SlaCountdown } from "@/components/SlaCountdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +24,7 @@ import {
   type ContributorFilter,
   type ContributorSortKey,
 } from "@/lib/contributors";
-import { buildCsv, buildCsvFilename, downloadCsv } from "@/lib/csv";
+import { buildCsv, buildCsvFilename, buildJson, buildJsonFilename, downloadCsv, downloadJson } from "@/lib/csv";
 import {
   buildWalletProofInfo,
   buildHorizonDebugInfo,
@@ -550,7 +549,8 @@ export function ContributorTable({
 
 export function exportContributorsCsv(
   contributors: ContributorRow[],
-  force = false
+  force = false,
+  filterStale = false
 ): boolean {
   const summary = buildStalenessSummary(contributors);
 

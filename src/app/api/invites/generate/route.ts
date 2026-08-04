@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
 
@@ -96,7 +95,6 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
   const pageSize = Math.min(100, parseInt(searchParams.get("pageSize") ?? "20"));
-  const skip = (page - 1) * pageSize;
 
   // In a real implementation, these would be stored in the database
   // For now, return a paginated empty list structure

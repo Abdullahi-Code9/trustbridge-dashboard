@@ -33,11 +33,26 @@ export function encodeCursor(value: string): string {
 }
 
 /**
- * Decodes a base64 cursor back to its original value
+ * Decodes a base64 cursor back to its original value.
+ * Returns null for empty input or strings that are not valid base64
+ * (Buffer.from does not throw on invalid base64 — it silently produces garbage).
  */
 export function decodeCursor(cursor: string): string | null {
+  if (!cursor) return null;
+
+  // Strict base64 alphabet check (standard encoding with optional padding).
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(cursor) || cursor.length % 4 !== 0) {
+    return null;
+  }
+
   try {
-    return Buffer.from(cursor, "base64").toString("utf-8");
+    const decoded = Buffer.from(cursor, "base64").toString("utf-8");
+    // Round-trip via the same encoder we use for cursors — Node's Buffer
+    // tolerates some malformed input and would otherwise return garbage.
+    if (encodeCursor(decoded) !== cursor) {
+      return null;
+    }
+    return decoded;
   } catch {
     return null;
   }

@@ -55,6 +55,7 @@ export function AddressInput({
         verified: false,
         xlm_balance: "0",
         spendable_xlm_balance: "0",
+        usdc_balance: "0",
         errors: ["Unable to reach validation service"],
         readiness: "not_ready",
       });

@@ -69,13 +69,17 @@ vi.mock("@/lib/audit", () => ({
 import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
+import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
+import { recordAuditLog } from "@/lib/audit";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
-const VALID_ADDRESS_A = "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ";
-const VALID_ADDRESS_B = "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGYWDYJSA4B566IJDGBPZH";
+const VALID_ADDRESS_A =
+  "GDXNXL25GDM3N5LAR5FALA3VSGHFET3EOKLXRP3ITPPMR3PISTQSKSFS";
+const VALID_ADDRESS_B =
+  "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
 /** Same-origin headers required by the CSRF guard in the route handler. */
 const SAME_ORIGIN_HEADERS: Record<string, string> = {
@@ -145,10 +149,18 @@ async function statuses(requests: Promise<Response>[]): Promise<number[]> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Re-apply default resolved values wiped by clearAllMocks / prior tests.
+  vi.mocked(mirrorRegistrationToSoroban).mockResolvedValue({
+    success: true,
+    errors: [],
+  });
+  vi.mocked(recordAuditLog).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  // Prefer clear over restore — restoreAllMocks strips vi.mock implementations
+  // (e.g. mirrorRegistrationToSoroban returning undefined), which breaks later tests.
+  vi.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -442,6 +454,10 @@ describe("concurrency: Horizon outage — all concurrent callers see 500", () =>
 describe("concurrency: mixed address pool — 50 pairs, each racing for a unique address", () => {
   it("across all pairs: exactly one 200 and one 409 per pair", async () => {
     const PAIRS = 50;
+    const { Keypair } = await import("stellar-sdk");
+    const pairAddresses = Array.from({ length: PAIRS }, () =>
+      Keypair.random().publicKey()
+    );
 
     // For each pair, build two users and one address.
     // The mock is: first call per address → null (winner), second → conflict (loser).
@@ -469,11 +485,11 @@ describe("concurrency: mixed address pool — 50 pairs, each racing for a unique
       return regRow(uid, VALID_ADDRESS_A) as any;
     });
 
-    // Launch all pairs concurrently
+    // Launch all pairs concurrently — each pair races for its own address
     const allRequests: Promise<Response>[] = [];
-    for (let i = 0; i < PAIRS; i++) {
-      allRequests.push(POST(buildRequest(VALID_ADDRESS_A)));
-      allRequests.push(POST(buildRequest(VALID_ADDRESS_A)));
+    for (const addr of pairAddresses) {
+      allRequests.push(POST(buildRequest(addr)));
+      allRequests.push(POST(buildRequest(addr)));
     }
 
     const allCodes = await statuses(allRequests);

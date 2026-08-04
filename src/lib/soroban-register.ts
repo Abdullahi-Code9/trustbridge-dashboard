@@ -26,8 +26,9 @@ export interface SorobanRegistrationResult {
  * @returns Promise<SorobanRegistrationResult> with success flag and optional txHash or errors
  */
 export async function mirrorRegistrationToSoroban(
-  registration: Registration
+  _registration: Registration
 ): Promise<SorobanRegistrationResult> {
+  void _registration;
   const contractId = process.env.SOROBAN_CONTRACT_ID?.trim();
 
   // Missing contract ID is not an error state — registrations succeed with

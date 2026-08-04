@@ -50,7 +50,9 @@ export class StructuredLogger {
 
   debug(message: string, details?: Record<string, unknown>) {
     const log = this.formatLog("debug", message, details);
-    if (process.env.DEBUG) {
+    const debugFlag = process.env.DEBUG?.trim().toLowerCase();
+    // Treat unset / empty / explicit falsey values as off; only truthy flags enable debug.
+    if (debugFlag && debugFlag !== "0" && debugFlag !== "false" && debugFlag !== "off") {
       console.log(JSON.stringify(log));
     }
   }

@@ -1,8 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { Loader2, Mail, RefreshCw } from "lucide-react";
 
 import {
   ContributorTable,
@@ -33,7 +32,6 @@ interface ContributorsResponse {
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
-  const [isExporting, setIsExporting] = useState(false);
 
   const contributorsQuery = useQuery({
     queryKey: ["contributors"],
@@ -104,6 +102,25 @@ export default function DashboardPage() {
       link.download = `contributors-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
+    },
+  });
+
+  const emailNudgeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/notifications/email-nudge", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(body?.error ?? "Email nudge failed");
+      }
+      return (await response.json()) as {
+        sent: number;
+        skipped: number;
+        failed: number;
+      };
     },
   });
 

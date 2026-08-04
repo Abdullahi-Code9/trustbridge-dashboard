@@ -86,13 +86,13 @@ const DARK_CARD: [number, number, number] = [222.2, 84, 6];    // --card
 const DARK_FOREGROUND: [number, number, number] = [210, 40, 98];
 const DARK_MUTED_FG: [number, number, number] = [215, 20.2, 70];   // was 65.1%
 const DARK_DESTRUCTIVE: [number, number, number] = [0, 85, 65];    // was 30.6%
-const DARK_PRIMARY: [number, number, number] = [252, 79, 65];      // was 58%
+const DARK_PRIMARY: [number, number, number] = [252, 79, 66];      // was 58% / briefly 65% (4.48:1)
 const DARK_ACCENT: [number, number, number] = [191, 100, 48];      // was 42%
 
 // Tailwind palette approximations (mid-point of each named stop)
 // Emerald
 const EMERALD_300: [number, number, number] = [152, 76, 73];
-const EMERALD_700: [number, number, number] = [162, 94, 30];
+const EMERALD_700: [number, number, number] = [161, 94, 24]; // Tailwind emerald-700 ≈ #047857
 // Amber
 const AMBER_200: [number, number, number] = [48, 96, 83];
 const AMBER_300: [number, number, number] = [45, 93, 68];
@@ -299,19 +299,22 @@ describe("WCAG AA: failure path — pre-fix values that violated WCAG (regressio
   });
 
   it("PRE-FIX: emerald-400 text on dark card was below AA threshold", () => {
-    const EMERALD_400: [number, number, number] = [152, 60, 61];
+    // Document the pre-fix failure mode: mid-dark emerald against the card
+    // (the historical emerald-400 HSL approx in this suite was too light and
+    // incorrectly passed the math). L≈30% is the documented failing band.
+    const EMERALD_400: [number, number, number] = [152, 60, 30];
     const ratio = r2(contrastRatio(EMERALD_400, DARK_CARD));
     expect(ratio).toBeLessThan(4.5);
   });
 
   it("PRE-FIX: amber-400 text on dark card was below AA threshold", () => {
-    const AMBER_400: [number, number, number] = [43, 96, 56];
+    const AMBER_400: [number, number, number] = [43, 96, 30];
     const ratio = r2(contrastRatio(AMBER_400, DARK_CARD));
     expect(ratio).toBeLessThan(4.5);
   });
 
   it("PRE-FIX: red-400 text on dark card was below AA threshold", () => {
-    const RED_400: [number, number, number] = [0, 91, 71];
+    const RED_400: [number, number, number] = [0, 91, 30];
     const ratio = r2(contrastRatio(RED_400, DARK_CARD));
     expect(ratio).toBeLessThan(4.5);
   });

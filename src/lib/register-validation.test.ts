@@ -2,9 +2,13 @@ import { describe, it, expect } from "vitest";
 import { validateRegistrationInput } from "@/lib/register-validation";
 
 describe("validateRegistrationInput", () => {
+  // Checksum-valid Ed25519 G-address (StrKey.isValidEd25519PublicKey)
+  const VALID_G_ADDRESS =
+    "GDXNXL25GDM3N5LAR5FALA3VSGHFET3EOKLXRP3ITPPMR3PISTQSKSFS";
+
   it("accepts valid Stellar G-address", () => {
     const errors = validateRegistrationInput({
-      stellarAddress: "GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ",
+      stellarAddress: VALID_G_ADDRESS,
     });
     expect(errors).toHaveLength(0);
   });
@@ -53,7 +57,7 @@ describe("validateRegistrationInput", () => {
 
   it("trims whitespace before validation", () => {
     const errors = validateRegistrationInput({
-      stellarAddress: "  GBSX7U7ARH74ENSCCX7FYTA5FS2YQXZHY737IBSZEOF72ULMITMZNKQ  ",
+      stellarAddress: `  ${VALID_G_ADDRESS}  `,
     });
     expect(errors).toHaveLength(0);
   });

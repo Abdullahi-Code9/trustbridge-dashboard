@@ -54,10 +54,16 @@ describe("WavePrepWorkspace", () => {
   it("should display correct stats", () => {
     render(<WavePrepWorkspace contributors={mockContributors} />);
 
-    expect(screen.getByText("3")).toBeInTheDocument(); // total
-    expect(screen.getByText(/Ready \(1\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Low Reserve \(1\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Not Ready \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText("Total Contributors")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Ready \(1\)$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Low Reserve \(1\)$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Not Ready \(1\)$/i })
+    ).toBeInTheDocument();
   });
 
   it("should display wave number if provided", () => {
@@ -71,13 +77,20 @@ describe("WavePrepWorkspace", () => {
     render(<WavePrepWorkspace contributors={mockContributors} />);
 
     const lowReserveButton = screen.getByRole("button", {
-      name: /Low Reserve/i,
+      name: /^Low Reserve \(1\)$/i,
     });
 
     fireEvent.click(lowReserveButton);
 
     // After clicking low reserve (toggle off), it should show fewer selected
-    expect(screen.getByText(/Filtered: \d+ of 3/i)).toBeInTheDocument();
+    expect(
+      screen.getByText((_, el) =>
+        Boolean(
+          el?.tagName === "P" &&
+            el.textContent?.replace(/\s+/g, " ").includes("Filtered: 2 of 3")
+        )
+      )
+    ).toBeInTheDocument();
   });
 
   it("should call onExportCsv when export CSV is clicked", () => {
@@ -145,6 +158,13 @@ describe("WavePrepWorkspace", () => {
 
   it("should show filtered count", () => {
     render(<WavePrepWorkspace contributors={mockContributors} />);
-    expect(screen.getByText(/Filtered: 3 of 3/i)).toBeInTheDocument();
+    expect(
+      screen.getByText((_, el) =>
+        Boolean(
+          el?.tagName === "P" &&
+            el.textContent?.replace(/\s+/g, " ").includes("Filtered: 3 of 3")
+        )
+      )
+    ).toBeInTheDocument();
   });
 });

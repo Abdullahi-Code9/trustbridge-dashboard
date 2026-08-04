@@ -51,18 +51,19 @@ describe("SlaCountdown component", () => {
 
   it("shows urgent styling for less than 6 hours remaining", () => {
     const now = new Date();
-    const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+    // 20h elapsed of a 24h SLA → ~4h remaining (urgent band is < 6h)
+    const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60 * 1000);
 
     render(
       <SlaCountdown
         readiness="not_ready"
-        lastCheckedAt={fiveHoursAgo}
+        lastCheckedAt={twentyHoursAgo}
         slaHours={24}
       />
     );
 
     const text = screen.getByText(/\d+h \d+m/);
-    expect(text.parentElement).toHaveClass("font-medium");
+    expect(text).toHaveClass("font-medium");
   });
 
   it("uses custom slaHours prop", () => {

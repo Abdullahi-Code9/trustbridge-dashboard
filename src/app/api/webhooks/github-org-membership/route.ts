@@ -32,10 +32,15 @@ function verifyWebhookSignature(
   hmac.update(payload);
   const digest = `sha256=${hmac.digest("hex")}`;
 
-  return crypto.timingSafeEqual(
-    Buffer.from(digest),
-    Buffer.from(signature)
-  );
+  // timingSafeEqual throws when buffer lengths differ — treat that as a failed
+  // verification instead of letting the outer catch return 202.
+  const digestBuf = Buffer.from(digest);
+  const signatureBuf = Buffer.from(signature);
+  if (digestBuf.length !== signatureBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(digestBuf, signatureBuf);
 }
 
 interface GitHubMembershipEvent {

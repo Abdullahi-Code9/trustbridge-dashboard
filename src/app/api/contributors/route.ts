@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { refreshed, changed, diffs, errors } = await refreshAllContributors();
-  const contributors = await getContributors();
+  const { refreshed, changed, diffs, errors = [] } = await refreshAllContributors();
+  const { contributors } = await getContributors();
 
   await recordAuditLog({
     action: "recheck.batch.queued",

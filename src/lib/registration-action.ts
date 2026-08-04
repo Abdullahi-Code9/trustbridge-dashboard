@@ -1,6 +1,8 @@
 import "server-only";
 
-import { getSession } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkStellarAddress } from "@/lib/horizon";
 import { toContributorRow } from "@/lib/registrations";
@@ -16,7 +18,7 @@ import type { ContributorRow } from "@/types";
 export async function registerStellarAddress(
   address: string
 ): Promise<{ success: true; data: ContributorRow } | { success: false; error: string }> {
-  const session = await getSession();
+  const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return { success: false, error: "Not authenticated" };
   }
@@ -34,8 +36,15 @@ export async function registerStellarAddress(
   }
 
   const checkResult = await checkStellarAddress(trimmed);
-  if (!checkResult.success) {
-    return { success: false, error: checkResult.errors.join(", ") };
+  if (checkResult.errors.length > 0 && !checkResult.funded && !checkResult.trustline) {
+    // Soft-fail Horizon errors only when we got nothing useful back.
+    // Unfunded/no-trustline accounts are still registerable.
+    const hardError = checkResult.errors.some((error) =>
+      /invalid|required|unavailable/i.test(error)
+    );
+    if (hardError) {
+      return { success: false, error: checkResult.errors.join(", ") };
+    }
   }
 
   const registration = await prisma.registration.upsert({
@@ -48,6 +57,8 @@ export async function registerStellarAddress(
       trustlineAuthorized: checkResult.trustline_authorized,
       xlmBalance: checkResult.xlm_balance,
       spendableXlmBalance: checkResult.spendable_xlm_balance,
+      usdcBalance: checkResult.usdc_balance,
+      horizonLatencyMs: checkResult.horizon_latency_ms ?? null,
       lastCheckedAt: new Date(),
     },
     update: {
@@ -57,6 +68,8 @@ export async function registerStellarAddress(
       trustlineAuthorized: checkResult.trustline_authorized,
       xlmBalance: checkResult.xlm_balance,
       spendableXlmBalance: checkResult.spendable_xlm_balance,
+      usdcBalance: checkResult.usdc_balance,
+      horizonLatencyMs: checkResult.horizon_latency_ms ?? null,
       lastCheckedAt: new Date(),
     },
     include: {
@@ -71,7 +84,7 @@ export async function registerStellarAddress(
  * Fetch the current user's registration (if it exists).
  */
 export async function getCurrentUserRegistration(): Promise<ContributorRow | null> {
-  const session = await getSession();
+  const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return null;
   }
@@ -96,6 +109,7 @@ export async function validateStellarAddress(address: string) {
     return {
       valid: false,
       errors: ["Address is required"],
+      readiness: null as null,
     };
   }
 
@@ -103,21 +117,23 @@ export async function validateStellarAddress(address: string) {
     return {
       valid: false,
       errors: ["Invalid Stellar public key (must be a valid G-address)"],
+      readiness: null as null,
     };
   }
 
   const checkResult = await checkStellarAddress(trimmed);
   return {
-    valid: checkResult.success,
+    valid: true,
     errors: checkResult.errors,
-    readiness: checkResult.success
-      ? {
-          funded: checkResult.funded,
-          trustline: checkResult.trustline,
-          trustlineAuthorized: checkResult.trustline_authorized,
-          xlmBalance: checkResult.xlm_balance,
-          spendableXlmBalance: checkResult.spendable_xlm_balance,
-        }
-      : null,
+    readiness: {
+      funded: checkResult.funded,
+      trustline: checkResult.trustline,
+      trustlineAuthorized: checkResult.trustline_authorized,
+      verified: checkResult.verified,
+      xlmBalance: checkResult.xlm_balance,
+      spendableXlmBalance: checkResult.spendable_xlm_balance,
+      usdcBalance: checkResult.usdc_balance,
+      status: checkResult.readiness,
+    },
   };
 }

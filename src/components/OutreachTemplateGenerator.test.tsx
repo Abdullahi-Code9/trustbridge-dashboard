@@ -128,35 +128,52 @@ describe("OutreachTemplateGenerator", () => {
   });
 
   it("should download template as file", async () => {
-    const mockLink = {
-      click: vi.fn(),
-    };
-
-    vi.spyOn(document, "createElement").mockReturnValue({
-      ...document.createElement("a"),
-      click: mockLink.click,
-    } as any);
-
-    render(<OutreachTemplateGenerator />);
-
-    const generateButton = screen.getByRole("button", {
-      name: /Generate Template/i,
+    const click = vi.fn();
+    const createObjectURL = vi.fn(() => "blob:mock-url");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
     });
 
-    fireEvent.click(generateButton);
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockImplementation((tagName: string, options?: any) => {
+        const el = realCreateElement(tagName, options);
+        if (tagName.toLowerCase() === "a") {
+          el.click = click;
+        }
+        return el;
+      });
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Download/i })).toBeInTheDocument();
-    });
+    try {
+      render(<OutreachTemplateGenerator />);
 
-    const downloadButton = screen.getByRole("button", {
-      name: /Download/i,
-    });
+      const generateButton = screen.getByRole("button", {
+        name: /Generate Template/i,
+      });
 
-    fireEvent.click(downloadButton);
+      fireEvent.click(generateButton);
 
-    // File download triggered
-    expect(mockLink.click).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Download/i })).toBeInTheDocument();
+      });
+
+      const downloadButton = screen.getByRole("button", {
+        name: /Download/i,
+      });
+
+      fireEvent.click(downloadButton);
+
+      // File download triggered
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(click).toHaveBeenCalled();
+    } finally {
+      createElementSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("should show copy confirmation message", async () => {
@@ -193,7 +210,7 @@ describe("OutreachTemplateGenerator", () => {
     fireEvent.click(generateButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Wave 5/i)).toBeInTheDocument();
+      expect(screen.getByText(/Wave 5 Payout Readiness Check/i)).toBeInTheDocument();
     });
   });
 

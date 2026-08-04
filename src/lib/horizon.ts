@@ -50,11 +50,12 @@ export function getHorizonCircuitBreakerMetrics(): ReturnType<
   return horizonCircuitBreaker.getMetrics();
 }
 
-async function loadAccountFromHorizon(
-  address: string
-): Promise<Horizon.ServerApi.AccountRecord> {
+async function loadAccountFromHorizon(address: string) {
   const server = getHorizonServer();
-  return server.loadAccount(address);
+  // SDK typings expose AccountResponse; runtime payload includes sponsorship fields.
+  return server.loadAccount(address) as unknown as Promise<
+    Horizon.ServerApi.AccountRecord
+  >;
 }
 
 /** True when the balance line is a trustline for the requested asset. */
@@ -122,6 +123,7 @@ export async function checkStellarAddress(
   }
 
   try {
+    const startedAt = Date.now();
     const account = await horizonCircuitBreaker.call(() =>
       withRetry(() => loadAccountFromHorizon(trimmed), {
         attempts: retries,
@@ -131,6 +133,7 @@ export async function checkStellarAddress(
       })
     );
 
+    const latencyMs = Date.now() - startedAt;
     const nativeBalance = account.balances.find(
       (b) => b.asset_type === "native"
     );

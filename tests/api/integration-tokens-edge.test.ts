@@ -43,6 +43,7 @@ import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { getDashboardStats } from "@/lib/registrations";
 import { prisma } from "@/lib/prisma";
 import { buildStalenessSummary } from "@/lib/stale-export";
+import { checkCache } from "@/lib/cache";
 
 import { POST as checkPost } from "@/app/api/check/route";
 import { GET as statsGet } from "@/app/api/stats/route";
@@ -77,6 +78,10 @@ function mockHorizonReady() {
     readiness: "ready",
   } as never);
 }
+
+beforeEach(() => {
+  checkCache.clear();
+});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -176,7 +181,8 @@ describe("POST /api/check — Horizon error propagation", () => {
     expect(checkStellarAddress).toHaveBeenCalledWith(
       expect.any(String),
       "XLM",
-      "native"
+      "native",
+      expect.objectContaining({ useCache: true })
     );
   });
 });

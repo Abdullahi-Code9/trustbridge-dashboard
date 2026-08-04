@@ -1,5 +1,3 @@
-import "server-only";
-
 export type TemplateFormat = "email" | "markdown" | "plain";
 
 export interface TemplateOptions {
@@ -100,6 +98,7 @@ Thank you for being part of Wave ${waveNumber}. To receive your payout, complete
 - [ ] Trustline is authorized
 
 ### 3. Verify on TrustBridge
+- [ ] Open https://trustbridge.dev/dashboard
 - [ ] Dashboard shows status: **Ready** ✅
 - [ ] Last checked: Today or recent
 
