@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "npm run prisma:generate && node scripts/next-build.mjs",
     "vercel-build": "npm run db:deploy && npm run build",
     "start": "next start",
     "lint": "next lint",
@@ -15,11 +15,12 @@
     "test:api": "vitest run tests/api",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "postinstall": "prisma generate",
+    "postinstall": "npm run prisma:generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "prisma:generate": "node scripts/prisma-generate.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
