@@ -5,6 +5,7 @@ import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getRegistryMode } from "@/lib/registry-mode";
 import { getContributors, refreshAllContributors } from "@/lib/registrations";
+import { captureException } from "@/lib/sentry";
 import type { ReadinessStatus } from "@/types";
 
 export const runtime = "nodejs";
@@ -36,20 +37,35 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { contributors: allContributors, total } = await getContributors();
+  try {
+    const { contributors: allContributors, total } = await getContributors();
 
-  const contributors =
-    readinessParam !== null
-      ? allContributors.filter((c) => c.readiness === readinessParam)
-      : allContributors;
+    const contributors =
+      readinessParam !== null
+        ? allContributors.filter((c) => c.readiness === readinessParam)
+        : allContributors;
 
-  return NextResponse.json({
-    contributors,
-    total,
-    filtered: contributors.length,
-    registryMode: getRegistryMode(),
-    ...(readinessParam !== null ? { readiness: readinessParam } : {}),
-  });
+    return NextResponse.json({
+      contributors,
+      total,
+      filtered: contributors.length,
+      registryMode: getRegistryMode(),
+      ...(readinessParam !== null ? { readiness: readinessParam } : {}),
+    });
+  } catch (error) {
+    // This route reads every registration, so a Prisma or Horizon failure here
+    // blanks the whole maintainer dashboard. Previously it surfaced only as an
+    // unhandled rejection in the platform log.
+    captureException(error, {
+      route: "/api/contributors",
+      method: "GET",
+      readinessFilter: readinessParam,
+    });
+    return NextResponse.json(
+      { error: "Failed to load contributors" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -61,24 +77,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { refreshed, changed, diffs, errors = [] } = await refreshAllContributors();
-  const { contributors } = await getContributors();
-
-  await recordAuditLog({
-    action: "recheck.batch.queued",
-    actorId: session.user.id,
-    actorLogin: session.user.githubUsername ?? null,
-    metadata: {
+  try {
+    const {
       refreshed,
       changed,
-      diffs: diffs.filter((diff) => diff.changed),
-      ...(errors.length > 0 ? { errors } : {}),
-    },
-  });
+      diffs,
+      errors = [],
+    } = await refreshAllContributors();
+    const { contributors } = await getContributors();
 
-  return NextResponse.json({
-    refreshed,
-    contributors,
-    registryMode: getRegistryMode(),
-  });
+    await recordAuditLog({
+      action: "recheck.batch.queued",
+      actorId: session.user.id,
+      actorLogin: session.user.githubUsername ?? null,
+      metadata: {
+        refreshed,
+        changed,
+        diffs: diffs.filter((diff) => diff.changed),
+        ...(errors.length > 0 ? { errors } : {}),
+      },
+    });
+
+    return NextResponse.json({
+      refreshed,
+      contributors,
+      registryMode: getRegistryMode(),
+    });
+  } catch (error) {
+    captureException(error, {
+      route: "/api/contributors",
+      method: "POST",
+      operation: "batch-recheck",
+      actorId: session.user.id,
+    });
+    return NextResponse.json(
+      { error: "Failed to refresh contributors" },
+      { status: 500 }
+    );
+  }
 }

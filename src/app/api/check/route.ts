@@ -6,6 +6,7 @@ import { jsonCheckError, jsonCheckResult } from "@/lib/check-api";
 import { DEFAULT_ASSET } from "@/lib/constants";
 import { checkStellarAddress } from "@/lib/horizon";
 import { checkCache, buildCacheKey } from "@/lib/cache";
+import { captureException } from "@/lib/sentry";
 import type { CheckAddressPayload, HorizonCheckResult } from "@/types";
 
 export const runtime = "nodejs";
@@ -94,7 +95,11 @@ export async function POST(request: NextRequest) {
     }
 
     return jsonCheckResult(result);
-  } catch {
+  } catch (error) {
+    // NOTE: the address is intentionally *not* passed as context. It is the
+    // one field a caller controls and it is a G-address — `captureException`
+    // would redact it anyway, so sending it buys nothing.
+    captureException(error, { route: "/api/check", method: "POST" });
     return jsonCheckError(["Failed to check address"], 500);
   }
 }

@@ -82,6 +82,9 @@ openssl rand -base64 32
 
 ## Stellar / Horizon (public)
 
+> **These values must match [trustbridge-action](https://github.com/Stellar-TrustBridge/trustbridge-action).**
+> See [Alignment with trustbridge-action](#alignment-with-trustbridge-action) below.
+
 These are prefixed with `NEXT_PUBLIC_` and available in the browser.
 
 ### `NEXT_PUBLIC_HORIZON_URL`
@@ -106,14 +109,14 @@ Asset code for trustline checks. Default: `USDC`
 Asset issuer public key. Default: Circle USDC on Stellar mainnet:
 
 ```
-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6
+GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 ```
 
 Change both code and issuer together for testnet or custom assets.
 
 ### `NEXT_PUBLIC_MIN_XLM_BALANCE`
 
-Minimum **spendable** XLM balance for **Ready** status (string parsed as float). Default: `1`
+Minimum **spendable** XLM balance for **Ready** status (string parsed as float). Default: `1.5`
 
 Accounts below this threshold show **Low Reserve** even with a valid trustline. Compared against the spendable balance (raw balance minus reserve and liabilities), not the raw `xlm_balance`.
 
@@ -122,6 +125,49 @@ Accounts below this threshold show **Low Reserve** even with a valid trustline. 
 Stellar network base reserve, in XLM, used to compute each account's minimum reserve (string parsed as float). Default: `0.5`
 
 Every Stellar account locks up `baseReserve * (2 + subentry_count + num_sponsoring − num_sponsored)` XLM that cannot be spent. This value rarely changes on mainnet; override only for custom networks or if the protocol-wide base reserve changes. See [Architecture — Readiness rules](./ARCHITECTURE.md#readiness-rules).
+
+---
+
+## Alignment with trustbridge-action
+
+The dashboard and [trustbridge-action](https://github.com/Stellar-TrustBridge/trustbridge-action) answer the same question — *is this contributor ready to be paid?* — from **two independently configured environments**. The dashboard reads `NEXT_PUBLIC_*` variables; the Action reads workflow inputs declared in its `action.yml`. Nothing links them at runtime.
+
+When they drift, the failure is quiet and lands on the contributor: the dashboard shows a green **Ready** badge, the contributor closes the tab, and the workflow that actually gates their payout rejects them (or the reverse — they fix a problem the dashboard never reported).
+
+### The contract
+
+These four values are mirrored in [`ACTION_DEFAULTS`](../src/lib/constants.ts) and must stay equal to the Action's defaults:
+
+| Dashboard variable | Action input (`action.yml`) | Shared default |
+| --- | --- | --- |
+| `NEXT_PUBLIC_HORIZON_URL` | `horizon_url` | `https://horizon.stellar.org` |
+| `NEXT_PUBLIC_DEFAULT_ASSET_CODE` | `asset_code` | `USDC` |
+| `NEXT_PUBLIC_DEFAULT_ASSET_ISSUER` | `asset_issuer` | `GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN` |
+| `NEXT_PUBLIC_MIN_XLM_BALANCE` | `min_xlm_reserve` | `1.5` |
+
+**The chosen issuer** is Circle's USDC issuing account on the Stellar **public network (mainnet)**. It is the issuer the Action ships with, and the one contributors are told to trust in the generated outreach templates. Verify any replacement with `StrKey.isValidEd25519PublicKey` before committing it — see the note on checksums below.
+
+`min_xlm_reserve` and `NEXT_PUBLIC_MIN_XLM_BALANCE` are not *quite* the same measurement: the Action compares the account's native XLM balance, while the dashboard compares the **spendable** balance (raw balance minus reserve and liabilities). The dashboard is therefore the stricter of the two at equal thresholds, which is the safe direction. Keeping the numbers equal keeps the two verdicts as close as the different measurements allow.
+
+### How drift is detected
+
+[`checkActionAlignment()`](../src/lib/network-config.ts) compares the *resolved* environment against `ACTION_DEFAULTS` on every call to `getNetworkConfig()`. Its findings are attached to the `actionAlignment` field of `GET /api/settings/network` (maintainer-only) and merged into the same `warnings` list the **Network configuration** panel on `/dashboard` already renders.
+
+It reports rather than fails, because a deliberate testnet or custom-asset deployment is legitimate and only an operator can tell the difference between that and a mistake. Two cases are worth calling out:
+
+- **Invalid issuer.** An issuer that fails StrKey checksum validation is flagged as *invalid*, not merely different. A malformed G-address cannot be a real account on any network, so no trustline check against it can ever succeed. This is not hypothetical: the issuer this project shipped before [#119](https://github.com/Stellar-TrustBridge/trustbridge-dashboard/issues/119) had the right length, prefix, and alphabet, and failed the checksum — a regex-shaped validation would have waved it through.
+- **A minimum balance *below* the Action's floor** is flagged; a value *above* it is not. Only the low side produces "ready here, rejected there". A stricter dashboard is conservative, not dangerous.
+
+### Changing the defaults
+
+Change the Action first, then mirror it here in the same wave:
+
+1. Update the input default in `trustbridge-action/action.yml`.
+2. Update `ACTION_DEFAULTS` in [`src/lib/constants.ts`](../src/lib/constants.ts).
+3. Update the Zod defaults in [`src/lib/env-validation.ts`](../src/lib/env-validation.ts), `.env.example`, and the table above.
+4. Run `npm test -- network`. The "bare environment" test in `src/lib/network-config.test.ts` fails if the shipped defaults drift from `ACTION_DEFAULTS`.
+
+Deployments that override any of these in their environment keep their override — nothing here silently switches a running production deployment onto a different asset or network.
 
 ---
 

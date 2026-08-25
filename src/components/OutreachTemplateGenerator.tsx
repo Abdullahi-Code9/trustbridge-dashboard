@@ -30,7 +30,7 @@ export function OutreachTemplateGenerator({
   waveNumber = 1,
   supportEmail = "support@trustbridge.dev",
   assetCode = "USDC",
-  assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+  assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 }: OutreachTemplateGeneratorProps) {
   const [format, setFormat] = useState<TemplateFormat>("email");
   const [contributorName, setContributorName] = useState("");

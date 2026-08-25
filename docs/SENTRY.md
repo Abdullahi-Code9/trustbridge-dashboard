@@ -13,6 +13,7 @@ degrades to a silent no-op — so local development and CI never require a DSN.
 - [Setup](#setup)
 - [Environment variables](#environment-variables)
 - [Using the helpers](#using-the-helpers)
+- [Redaction](#redaction)
 - [Instrumented routes](#instrumented-routes)
 - [Source maps (optional)](#source-maps-optional)
 - [Testing](#testing)
@@ -192,21 +193,95 @@ if (isSentryEnabled()) {
 
 ---
 
+## Redaction
+
+**Every payload is redacted before it leaves the process.** `captureException`,
+`captureMessage`, and `captureExceptionWithScope` scrub their arguments as the
+last step before handing them to the SDK. This is done at the single choke
+point in [`src/lib/sentry.ts`](../src/lib/sentry.ts) rather than at each call
+site, because a call site that forgets is exactly how a contributor's wallet
+address ends up on a third-party service.
+
+Call sites therefore do **not** need to pre-scrub anything, and should not try
+to — passing the raw error is correct.
+
+### What is removed
+
+| Pattern | Replaced with | Why |
+|---|---|---|
+| Stellar secret seeds (`S…`, 56-char base32) | `[redacted:stellar-secret]` | Full account control |
+| Stellar public addresses (`G…`, 56-char base32) | `[redacted:stellar-address]` | Links a GitHub identity to an on-chain balance |
+| GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) | `[redacted:github-token]` | Account takeover |
+| Credentials inside connection strings (`scheme://user:pass@host`) | `scheme://[redacted:credentials]@host` | `DATABASE_URL` leaks via driver errors |
+| `Bearer` / `token` header values | `[redacted:token]` | Session and API credentials |
+| Email addresses | `[redacted:email]` | Personal data |
+
+Host names, ports, database names, status codes, timings, and ordinary
+diagnostic text are deliberately **kept** — they are the part that makes an
+event worth having.
+
+Additionally, any context key named `accessToken`, `refreshToken`,
+`authorization`, `cookie`, `password`, `secret`, `token`, `apiKey`,
+`sessionToken`, or `tokenEncryptionKey` (case-insensitive, with or without
+underscores) has its value dropped wholesale, whatever the value looks like.
+
+### What is deliberately kept
+
+`captureExceptionWithScope` passes `user.id` and `user.username` through
+unredacted. These are the two identifiers Sentry's user model is built around,
+and without them an event cannot be tied to a report. Do not put an email or a
+Stellar address in either field.
+
+### Traversal safety
+
+Context objects are walked recursively to a depth of 6, after which the value
+becomes `[redacted:max-depth]`. `Error` instances are **cloned**, not mutated,
+so a handler that reports an error and then logs or rethrows it still has the
+original message. Cyclic objects are safe.
+
+Redaction never throws: a reporting path that can crash the request it was
+meant to observe is worse than no reporting at all.
+
+---
+
 ## Instrumented routes
 
-The following routes are recommended instrumentation points:
+### Wired today
 
-| Route | Instrumented at | Why |
-|-------|----------------|-----|
-| `POST /api/check` | Outer `catch` block | Horizon errors and unexpected exceptions |
-| `POST /api/register` | Outer `catch` block | DB write failures, Horizon errors |
-| `GET /api/contributors` | DB query failures | Prisma connection errors |
-| `POST /api/contributors` | Batch recheck failures | Partial Horizon batch failures |
-| `POST /api/contributors/[id]` | Recheck errors | Single-contributor recheck failures |
-| `GET /api/health` | Health check degradations | Stale-data warnings |
-| `GET /api/audit` | Auth failures | Unexpected 403s |
+| Route | Instrumented at | Context sent |
+|-------|----------------|--------------|
+| `POST /api/check` | Outer `catch` | `route`, `method` |
+| `POST /api/register` | Outer `catch` | `route`, `method`, `userId` |
+| `POST /api/register` | Soroban mirror `catch` (fire-and-forget) | `route`, `method`, `operation`, `registrationId` |
+| `GET /api/contributors` | Wraps the read | `route`, `method`, `readinessFilter` |
+| `POST /api/contributors` | Wraps the batch recheck | `route`, `method`, `operation`, `actorId` |
 
-To add instrumentation, wrap the handler body:
+These five were picked because each one previously discarded its error
+entirely: `/api/check` and `/api/register` had bare `catch {}` blocks that
+returned a generic 500 with no record of the cause, the Soroban mirror wrote to
+`console.error` and nothing else, and `/api/contributors` had no error handling
+at all — a Prisma failure there blanked the maintainer dashboard and surfaced
+only as an unhandled rejection in the platform log.
+
+Note that `GET /api/contributors` and `POST /api/contributors` now return a JSON
+500 (`{ "error": "Failed to load contributors" }` /
+`"Failed to refresh contributors"`) where they previously produced an unhandled
+rejection.
+
+### Not yet wired
+
+Remaining candidates, in rough priority order:
+
+| Route | Why |
+|-------|-----|
+| `POST /api/contributors/[id]` | Single-contributor recheck failures |
+| `GET /api/health` | Health check degradations, stale-data warnings |
+| `GET /api/audit` | Unexpected 403s |
+| `POST /api/contract-sync` | Scheduled job failures nobody is watching |
+| `POST /api/webhooks/github-org-membership` | Silent membership desync |
+
+To add instrumentation, wrap the handler body — pass the raw error, redaction
+is automatic:
 
 ```ts
 import { captureException } from "@/lib/sentry";
