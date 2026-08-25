@@ -1,3 +1,5 @@
+import { ACTION_DEFAULTS } from "@/lib/constants";
+
 export type TemplateFormat = "email" | "markdown" | "plain";
 
 export interface TemplateOptions {
@@ -23,10 +25,10 @@ export function generateEmailTemplate(options: TemplateOptions): string {
     contributorName = "Contributor",
     waveNumber = 1,
     deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    minXlmBalance = 1,
+    minXlmBalance = ACTION_DEFAULTS.minXlmReserve,
     supportEmail = "support@trustbridge.dev",
-    assetCode = "USDC",
-    assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+    assetCode = ACTION_DEFAULTS.assetCode,
+    assetIssuer = ACTION_DEFAULTS.assetIssuer,
   } = options;
 
   return `Subject: Wave ${waveNumber} Payout Readiness Check
@@ -74,10 +76,10 @@ export function generateMarkdownTemplate(options: TemplateOptions): string {
     contributorName = "Contributor",
     waveNumber = 1,
     deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    minXlmBalance = 1,
+    minXlmBalance = ACTION_DEFAULTS.minXlmReserve,
     supportEmail = "support@trustbridge.dev",
-    assetCode = "USDC",
-    assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+    assetCode = ACTION_DEFAULTS.assetCode,
+    assetIssuer = ACTION_DEFAULTS.assetIssuer,
   } = options;
 
   return `# Wave ${waveNumber} Payout Readiness
@@ -125,10 +127,10 @@ export function generatePlainTemplate(options: TemplateOptions): string {
     contributorName = "Contributor",
     waveNumber = 1,
     deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    minXlmBalance = 1,
+    minXlmBalance = ACTION_DEFAULTS.minXlmReserve,
     supportEmail = "support@trustbridge.dev",
-    assetCode = "USDC",
-    assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+    assetCode = ACTION_DEFAULTS.assetCode,
+    assetIssuer = ACTION_DEFAULTS.assetIssuer,
   } = options;
 
   return `WAVE ${waveNumber} PAYOUT READINESS CHECKLIST

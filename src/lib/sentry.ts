@@ -36,6 +36,149 @@ export interface SentryClient {
 }
 
 // ---------------------------------------------------------------------------
+// Redaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Patterns scrubbed from every string that reaches Sentry.
+ *
+ * Ordering matters: the more specific GitHub token patterns run before the
+ * generic long-hex rule so a `ghp_…` token is labelled as a token rather than
+ * as an anonymous secret.
+ *
+ * These are deliberately conservative. Over-redacting a stack frame costs a
+ * little debuggability; under-redacting ships a contributor's wallet address
+ * or a maintainer's GitHub token to a third-party service, which is the thing
+ * this project cannot take back.
+ */
+const REDACTION_RULES: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+  // GitHub fine-grained PATs: github_pat_<22>_<59>
+  { pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}/g, replacement: "[redacted:github-token]" },
+  // Classic/OAuth/app tokens: ghp_, gho_, ghu_, ghs_, ghr_
+  { pattern: /\bgh[pousr]_[A-Za-z0-9]{20,}/g, replacement: "[redacted:github-token]" },
+  // Stellar public keys (G…) and secret seeds (S…). Both are 56-char base32.
+  // Secrets must never appear anywhere; public G-addresses are personal data
+  // that ties a GitHub identity to an on-chain balance, so they go too.
+  { pattern: /\bS[A-Z2-7]{55}\b/g, replacement: "[redacted:stellar-secret]" },
+  { pattern: /\bG[A-Z2-7]{55}\b/g, replacement: "[redacted:stellar-address]" },
+  // Postgres/other connection strings carrying inline credentials.
+  { pattern: /\b([a-z][a-z0-9+.-]*):\/\/[^\s:/@]+:[^\s@]+@/gi, replacement: "$1://[redacted:credentials]@" },
+  // Authorization header values.
+  { pattern: /\b(bearer|token)\s+[A-Za-z0-9._~+/=-]{12,}/gi, replacement: "$1 [redacted:token]" },
+  // Email addresses.
+  { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, replacement: "[redacted:email]" },
+];
+
+/** Context keys whose value is dropped wholesale, whatever it looks like. */
+const SENSITIVE_KEYS = new Set([
+  "accesstoken",
+  "access_token",
+  "refreshtoken",
+  "refresh_token",
+  "authorization",
+  "cookie",
+  "password",
+  "secret",
+  "token",
+  "apikey",
+  "api_key",
+  "sessiontoken",
+  "session_token",
+  "tokenencryptionkey",
+  "token_encryption_key",
+]);
+
+/** Depth cap, so a cyclic or pathological object can't hang the reporter. */
+const MAX_REDACT_DEPTH = 6;
+
+/**
+ * Scrub secrets and personal data out of a single string.
+ *
+ * Exported for tests and for callers that build their own message strings.
+ */
+export function redactString(input: string): string {
+  let output = input;
+  for (const { pattern, replacement } of REDACTION_RULES) {
+    // Rules are module-level and therefore stateful with the /g flag; reset
+    // lastIndex so a previous call can't cause a missed match.
+    pattern.lastIndex = 0;
+    output = output.replace(pattern, replacement);
+  }
+  return output;
+}
+
+/**
+ * Recursively redact an arbitrary value: strings are scrubbed, objects are
+ * walked, and any key in {@link SENSITIVE_KEYS} is dropped entirely.
+ *
+ * Errors are converted to a plain object rather than mutated, so the caller's
+ * own error instance is never modified by the act of reporting it.
+ */
+export function redactValue(value: unknown, depth = 0): unknown {
+  if (depth > MAX_REDACT_DEPTH) return "[redacted:max-depth]";
+  if (typeof value === "string") return redactString(value);
+  if (value === null || value === undefined) return value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "function") return "[function]";
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: redactString(value.message),
+      stack: value.stack ? redactString(value.stack) : undefined,
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactValue(entry, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+        out[key] = "[redacted]";
+        continue;
+      }
+      out[key] = redactValue(entry, depth + 1);
+    }
+    return out;
+  }
+
+  return "[redacted:unserializable]";
+}
+
+/**
+ * Redact a context bag before it is attached to a Sentry event.
+ * Returns `undefined` for an absent context so callers can pass it straight
+ * through to the SDK.
+ */
+export function redactContext(
+  context?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (!context) return undefined;
+  return redactValue(context, 0) as Record<string, unknown>;
+}
+
+/**
+ * Redact an exception before reporting.
+ *
+ * `Error` instances are cloned — same `name`, scrubbed `message` and `stack` —
+ * rather than edited in place, because the caller usually goes on to log or
+ * rethrow the original. Non-Error values are scrubbed as plain values.
+ */
+export function redactException(error: unknown): unknown {
+  if (error instanceof Error) {
+    const clone = new Error(redactString(error.message));
+    clone.name = error.name;
+    clone.stack = error.stack ? redactString(error.stack) : undefined;
+    return clone;
+  }
+  return redactValue(error, 0);
+}
+
+// ---------------------------------------------------------------------------
 // No-op stub (used when NEXT_PUBLIC_SENTRY_DSN is absent)
 // ---------------------------------------------------------------------------
 
@@ -155,7 +298,13 @@ export function captureException(
   error: unknown,
   context?: Record<string, unknown>
 ): string {
-  return getClient().captureException(error, context);
+  // Redaction happens here, at the single choke point, rather than being left
+  // to each call site — a caller who forgets is exactly how a wallet address
+  // or token ends up on sentry.io.
+  return getClient().captureException(
+    redactException(error),
+    redactContext(context)
+  );
 }
 
 /**
@@ -169,7 +318,7 @@ export function captureMessage(
   message: string,
   level: SentryLevel = "info"
 ): string {
-  return getClient().captureMessage(message, level);
+  return getClient().captureMessage(redactString(message), level);
 }
 
 /**
@@ -190,13 +339,16 @@ export function captureExceptionWithScope(
   level: SentryLevel = "error"
 ): string {
   let eventId = "";
+  const safeError = redactException(error);
   getClient().withScope((scope) => {
+    // `user.id` and `user.username` are the two identifiers Sentry is designed
+    // to carry, so they are passed through as-is; everything else is scrubbed.
     scope.setUser(user);
     scope.setLevel(level);
     for (const [k, v] of Object.entries(tags)) {
-      scope.setTag(k, v);
+      scope.setTag(k, redactString(v));
     }
-    eventId = getClient().captureException(error);
+    eventId = getClient().captureException(safeError);
   });
   return eventId;
 }

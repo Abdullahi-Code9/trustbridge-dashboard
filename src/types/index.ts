@@ -139,6 +139,33 @@ export interface SorobanEventTimelineResponse {
 
 export type StellarNetwork = "mainnet" | "testnet" | "custom";
 
+/**
+ * Result of comparing the dashboard's resolved Stellar configuration against
+ * the defaults declared by trustbridge-action's `action.yml`.
+ * @see checkActionAlignment in src/lib/network-config.ts
+ */
+export interface ActionAlignment {
+  /** Resolved Horizon base URL the dashboard will query. */
+  horizonUrl: string;
+  /** Resolved asset code the dashboard checks trustlines for. */
+  assetCode: string;
+  /** Resolved asset issuer G-address. */
+  assetIssuer: string;
+  /** Resolved minimum spendable-XLM floor used by `computeReadiness`. */
+  minXlmBalance: number;
+  /** The corresponding trustbridge-action defaults, for side-by-side display. */
+  expected: {
+    horizonUrl: string;
+    assetCode: string;
+    assetIssuer: string;
+    minXlmBalance: number;
+  };
+  /** True when nothing drifted — i.e. `warnings` is empty. */
+  aligned: boolean;
+  /** Human-readable description of each drift, safe to render verbatim. */
+  warnings: string[];
+}
+
 export interface NetworkConfig {
   horizonUrl: string;
   horizonNetwork: StellarNetwork;
@@ -146,5 +173,7 @@ export interface NetworkConfig {
   sorobanNetwork: StellarNetwork;
   sorobanContractConfigured: boolean;
   mismatched: boolean;
+  /** Drift between this dashboard and trustbridge-action's defaults. */
+  actionAlignment: ActionAlignment;
   warnings: string[];
 }

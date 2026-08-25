@@ -27,7 +27,7 @@ describe("env-validation", () => {
         NEXT_PUBLIC_HORIZON_URL: "https://horizon.stellar.org",
         NEXT_PUBLIC_DEFAULT_ASSET_CODE: "USDC",
         NEXT_PUBLIC_DEFAULT_ASSET_ISSUER:
-          "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+          "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
       };
 
       const env = validateEnv();

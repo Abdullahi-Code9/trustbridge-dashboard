@@ -15,7 +15,7 @@ describe("outreach-templates", () => {
     minXlmBalance: 2,
     supportEmail: "help@example.com",
     assetCode: "USDC",
-    assetIssuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6",
+    assetIssuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
   };
 
   describe("generateEmailTemplate", () => {
@@ -35,7 +35,9 @@ describe("outreach-templates", () => {
 
       expect(template).toContain("Wave 1");
       expect(template).toContain("Contributor");
-      expect(template).toContain("1 XLM");
+      // Default mirrors trustbridge-action's `min_xlm_reserve` (1.5), so the
+      // reserve a contributor is told to fund is the one the Action enforces.
+      expect(template).toContain("1.5 XLM");
       expect(template).toContain("support@trustbridge.dev");
     });
 

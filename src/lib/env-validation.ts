@@ -33,14 +33,17 @@ const envSchema = z.object({
     .url("NEXT_PUBLIC_HORIZON_URL must be a valid URL")
     .default("https://horizon.stellar.org"),
   NEXT_PUBLIC_DEFAULT_ASSET_CODE: z.string().default("USDC"),
+  // Circle USDC on Stellar mainnet — must match trustbridge-action's
+  // `asset_issuer` default. See ACTION_DEFAULTS in src/lib/constants.ts.
   NEXT_PUBLIC_DEFAULT_ASSET_ISSUER: z.string().default(
-    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX5IHOWEBMGJI55ITFSZ6"
+    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
   ),
   NEXT_PUBLIC_MIN_XLM_BALANCE: z
     .string()
     .transform((v) => parseFloat(v))
     .pipe(z.number().nonnegative())
-    .default("1"),
+    // Matches trustbridge-action's `min_xlm_reserve` default.
+    .default("1.5"),
   NEXT_PUBLIC_BASE_RESERVE_XLM: z
     .string()
     .transform((v) => parseFloat(v))

@@ -13,6 +13,7 @@ import {
 } from "@/lib/registration-insights";
 import { validateRegistrationInput } from "@/lib/register-validation";
 import { computeReadiness } from "@/lib/readiness";
+import { captureException } from "@/lib/sentry";
 import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
 
 export const runtime = "nodejs";
@@ -90,6 +91,12 @@ export async function POST(request: NextRequest) {
     void Promise.resolve(mirrorRegistrationToSoroban(registration)).catch(
       (error) => {
         console.error("Soroban registration mirror failed:", error);
+        captureException(error, {
+          route: "/api/register",
+          method: "POST",
+          operation: "soroban-mirror",
+          registrationId: registration.id,
+        });
       }
     );
 
@@ -129,7 +136,14 @@ export async function POST(request: NextRequest) {
         }),
       },
     });
-  } catch {
+  } catch (error) {
+    // The response stays deliberately vague — the caller learns nothing about
+    // why this failed — so Sentry is the only place the real cause survives.
+    captureException(error, {
+      route: "/api/register",
+      method: "POST",
+      userId: session.user.id,
+    });
     return NextResponse.json(
       { error: "Failed to save registration" },
       { status: 500 }
