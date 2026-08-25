@@ -48,6 +48,9 @@ interface ContributorTableProps {
   onExport?: () => void;
   onRecheck?: (id: string) => void;
   recheckingId?: string | null;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
   className?: string;
 }
 
@@ -110,6 +113,9 @@ function MobileContributorCard({
   row,
   onRecheck,
   recheckingId,
+  onLoadMore,
+  hasMore = false,
+  isLoadingMore = false,
 }: {
   row: ContributorRow;
   onRecheck?: (id: string) => void;
@@ -126,7 +132,6 @@ function MobileContributorCard({
         </div>
         <TrustlineStatusBadge status={row.readiness} />
       </div>
-
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
         <div>
           <dt className="text-muted-foreground">Verified</dt>
@@ -543,6 +548,20 @@ export function ContributorTable({
           </tbody>
         </table>
       </div>
+      {hasMore && onLoadMore && (
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            aria-label="Load more contributors"
+          >
+            {isLoadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isLoadingMore ? "Loading contributors..." : "Load more contributors"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

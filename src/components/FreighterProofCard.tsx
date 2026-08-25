@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Copy, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Copy, PenLine, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +34,9 @@ export function FreighterProofCard({
 }: FreighterProofCardProps) {
   const [freighterDetected, setFreighterDetected] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [signed, setSigned] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState(false);
 
   useEffect(() => {
     setFreighterDetected(
@@ -46,6 +49,23 @@ export function FreighterProofCard({
     await navigator.clipboard.writeText(proof.challenge);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function signChallenge() {
+    setSigning(true);
+    setSignError(false);
+    try {
+      const api = window.freighterApi as
+        | { signMessage?: (message: string, options?: unknown) => Promise<unknown> }
+        | undefined;
+      if (!api?.signMessage) return;
+      await api.signMessage(proof.challenge);
+      setSigned(true);
+    } catch {
+      setSignError(true);
+    } finally {
+      setSigning(false);
+    }
   }
 
   return (
@@ -106,6 +126,17 @@ export function FreighterProofCard({
           <Copy className="h-4 w-4" />
           {copied ? "Copied challenge" : "Copy challenge"}
         </Button>
+        {freighterDetected && (
+          <Button variant="stellar" onClick={() => void signChallenge()} disabled={!addressReady || signing}>
+            <PenLine className="h-4 w-4" />
+            {signed ? "Challenge signed" : signing ? "Signing..." : "Sign challenge"}
+          </Button>
+        )}
+        {signError && (
+          <p className="text-xs text-destructive" role="alert">
+            Freighter did not sign the challenge. You can still copy it for a fallback review.
+          </p>
+        )}
 
         {!addressReady && (
           <p className="text-xs text-muted-foreground">
