@@ -1,225 +1,222 @@
 /**
- * Analytics tracking for TrustBridge Dashboard.
- * Tracks user interactions, feature usage, and error rates.
+ * Analytics adapter for TrustBridge Dashboard.
+ *
+ * Provides a simple interface for tracking product events.
+ * Defaults to a no-op when no analytics key is configured.
+ *
+ * Supported adapters:
+ * - PostHog (if POSTHOG_API_KEY is set)
+ * - Console logging (fallback for development)
+ * - No-op (default when no key is configured)
  */
 
 export type EventType =
-  | 'user_registered'
-  | 'verification_checked'
-  | 'csv_exported'
-  | 'batch_verified'
-  | 'error_occurred'
-  | 'page_viewed'
-  | 'feature_used';
+  | "registration_created"
+  | "registration_updated"
+  | "recheck_completed"
+  | "batch_recheck_started"
+  | "csv_exported"
+  | "soroban_mirror_completed";
 
 export interface AnalyticsEvent {
   type: EventType;
-  timestamp: Date;
+  timestamp: number;
+  properties?: Record<string, unknown>;
+}
+
+interface AnalyticsAdapter {
+  track(event: EventType, properties?: Record<string, unknown>): void;
+  identify(userId: string, properties?: Record<string, unknown>): void;
+  reset(): void;
+}
+
+/**
+ * No-op adapter — used when no analytics key is configured.
+ */
+class NoOpAdapter implements AnalyticsAdapter {
+  track(): void {
+    // No-op
+  }
+  identify(): void {
+    // No-op
+  }
+  reset(): void {
+    // No-op
+  }
+}
+
+/**
+ * Console adapter — logs events to the console for development.
+ */
+class ConsoleAdapter implements AnalyticsAdapter {
+  track(event: EventType, properties?: Record<string, unknown>): void {
+    console.log(`[Analytics] ${event}`, properties);
+  }
+  identify(userId: string, properties?: Record<string, unknown>): void {
+    console.log(`[Analytics] identify: ${userId}`, properties);
+  }
+  reset(): void {
+    console.log("[Analytics] reset");
+  }
+}
+
+/**
+ * PostHog adapter — sends events to PostHog.
+ * Requires POSTHOG_API_KEY and optionally POSTHOG_HOST.
+ */
+class PostHogAdapter implements AnalyticsAdapter {
+  private apiKey: string;
+  private host: string;
+  private initialized = false;
+
+  constructor(apiKey: string, host?: string) {
+    this.apiKey = apiKey;
+    this.host = host || "https://app.posthog.com";
+  }
+
+  private async init(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      const posthog = await import("posthog-js").then((m) => m.default);
+      posthog.init(this.apiKey, {
+        api_host: this.host,
+        autocapture: false,
+        capture_pageview: false,
+        capture_pageleave: false,
+      });
+      this.initialized = true;
+    } catch {
+      console.warn("[Analytics] Failed to initialize PostHog");
+    }
+  }
+
+  async track(event: EventType, properties?: Record<string, unknown>): Promise<void> {
+    await this.init();
+    try {
+      const posthog = await import("posthog-js").then((m) => m.default);
+      posthog.capture(event, properties);
+    } catch {
+      // Silently ignore — analytics should never block the user
+    }
+  }
+
+  async identify(userId: string, properties?: Record<string, unknown>): Promise<void> {
+    await this.init();
+    try {
+      const posthog = await import("posthog-js").then((m) => m.default);
+      posthog.identify(userId, properties);
+    } catch {
+      // Silently ignore
+    }
+  }
+
+  async reset(): Promise<void> {
+    try {
+      const posthog = await import("posthog-js").then((m) => m.default);
+      posthog.reset();
+    } catch {
+      // Silently ignore
+    }
+  }
+}
+
+/**
+ * Get the analytics adapter instance.
+ * Returns a no-op adapter when no key is configured.
+ */
+function getAnalyticsAdapter(): AnalyticsAdapter {
+  if (typeof window === "undefined") {
+    // Server-side: no-op
+    return new NoOpAdapter();
+  }
+
+  const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_API_KEY?.trim();
+  if (posthogKey) {
+    return new PostHogAdapter(posthogKey, process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim());
+  }
+
+  // Development fallback: console logging
+  if (process.env.NODE_ENV === "development") {
+    return new ConsoleAdapter();
+  }
+
+  return new NoOpAdapter();
+}
+
+const adapter = getAnalyticsAdapter();
+
+/**
+ * Track a registration event.
+ */
+export function trackRegistrationCreated(properties?: {
   userId?: string;
-  metadata?: Record<string, unknown>;
-  duration?: number; // milliseconds
+  stellarAddress?: string;
+}): void {
+  adapter.track("registration_created", properties);
 }
 
-export interface AnalyticsSession {
-  sessionId: string;
-  startedAt: Date;
+/**
+ * Track a registration update event.
+ */
+export function trackRegistrationUpdated(properties?: {
   userId?: string;
-  events: AnalyticsEvent[];
+  stellarAddress?: string;
+  fieldsChanged?: string[];
+}): void {
+  adapter.track("registration_updated", properties);
 }
 
 /**
- * Analytics tracker for dashboard metrics.
+ * Track a recheck completion event.
  */
-export class AnalyticsTracker {
-  private events: AnalyticsEvent[] = [];
-  private currentSession?: AnalyticsSession;
-  private readonly maxEvents: number;
-  private eventCounters: Map<EventType, number> = new Map();
-
-  constructor(maxEvents: number = 1000) {
-    this.maxEvents = maxEvents;
-  }
-
-  /**
-   * Start a new analytics session.
-   */
-  startSession(userId?: string): AnalyticsSession {
-    this.currentSession = {
-      sessionId: this.generateSessionId(),
-      startedAt: new Date(),
-      userId,
-      events: [],
-    };
-    return this.currentSession;
-  }
-
-  /**
-   * Track an event.
-   */
-  trackEvent(
-    type: EventType,
-    metadata?: Record<string, unknown>,
-    duration?: number,
-  ): AnalyticsEvent {
-    const event: AnalyticsEvent = {
-      type,
-      timestamp: new Date(),
-      userId: this.currentSession?.userId,
-      metadata,
-      duration,
-    };
-
-    this.events.push(event);
-    if (this.currentSession) {
-      this.currentSession.events.push(event);
-    }
-
-    // Increment counter
-    const count = this.eventCounters.get(type) || 0;
-    this.eventCounters.set(type, count + 1);
-
-    // Keep only recent events
-    if (this.events.length > this.maxEvents) {
-      this.events = this.events.slice(-this.maxEvents);
-    }
-
-    return event;
-  }
-
-  /**
-   * Get event count for a specific type.
-   */
-  getEventCount(type: EventType): number {
-    return this.eventCounters.get(type) || 0;
-  }
-
-  /**
-   * Get all events.
-   */
-  getEvents(): AnalyticsEvent[] {
-    return [...this.events];
-  }
-
-  /**
-   * Get events of a specific type.
-   */
-  getEventsByType(type: EventType): AnalyticsEvent[] {
-    return this.events.filter((e) => e.type === type);
-  }
-
-  /**
-   * Get events from a time range.
-   */
-  getEventsSince(minutesAgo: number): AnalyticsEvent[] {
-    const cutoff = Date.now() - minutesAgo * 60 * 1000;
-    return this.events.filter((e) => e.timestamp.getTime() > cutoff);
-  }
-
-  /**
-   * Calculate average duration for events.
-   */
-  getAverageDuration(type: EventType): number | null {
-    const events = this.getEventsByType(type).filter((e) => e.duration !== undefined);
-    if (events.length === 0) return null;
-
-    const total = events.reduce((sum, e) => sum + (e.duration || 0), 0);
-    return total / events.length;
-  }
-
-  /**
-   * Get session summary.
-   */
-  getSessionSummary(): AnalyticsSession | null {
-    return this.currentSession || null;
-  }
-
-  /**
-   * Get analytics summary.
-   */
-  getSummary(): {
-    totalEvents: number;
-    eventCounts: Record<string, number>;
-    recentEvents: number;
-    averageDurations: Record<string, number>;
-  } {
-    const averageDurations: Record<string, number> = {};
-    const eventTypes: EventType[] = Array.from(this.eventCounters.keys());
-
-    for (const type of eventTypes) {
-      const avg = this.getAverageDuration(type);
-      if (avg !== null) {
-        averageDurations[type] = Math.round(avg);
-      }
-    }
-
-    return {
-      totalEvents: this.events.length,
-      eventCounts: Object.fromEntries(this.eventCounters),
-      recentEvents: this.getEventsSince(5).length,
-      averageDurations,
-    };
-  }
-
-  /**
-   * Export analytics as JSON.
-   */
-  toJSON(): string {
-    return JSON.stringify(
-      {
-        summary: this.getSummary(),
-        session: this.currentSession,
-      },
-      null,
-      2,
-    );
-  }
-
-  /**
-   * Clear all analytics data.
-   */
-  clear(): void {
-    this.events = [];
-    this.eventCounters.clear();
-    this.currentSession = undefined;
-  }
-
-  /**
-   * Generate a unique session ID.
-   */
-  private generateSessionId(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-  }
+export function trackRecheckCompleted(properties?: {
+  totalChecked?: number;
+  changed?: number;
+  durationMs?: number;
+}): void {
+  adapter.track("recheck_completed", properties);
 }
 
 /**
- * Global analytics tracker instance.
+ * Track a batch recheck start event.
  */
-export const analyticsTracker = new AnalyticsTracker();
-
-/**
- * Helper to track page views.
- */
-export function trackPageView(page: string): void {
-  analyticsTracker.trackEvent('page_viewed', { page });
+export function trackBatchRecheckStarted(properties?: {
+  totalRegistrations?: number;
+}): void {
+  adapter.track("batch_recheck_started", properties);
 }
 
 /**
- * Helper to track feature usage.
+ * Track a CSV export event.
  */
-export function trackFeatureUsage(feature: string, metadata?: Record<string, unknown>): void {
-  analyticsTracker.trackEvent('feature_used', { feature, ...metadata });
+export function trackCsvExported(properties?: {
+  rowCount?: number;
+}): void {
+  adapter.track("csv_exported", properties);
 }
 
 /**
- * Helper to track errors.
+ * Track a Soroban mirror completion event.
  */
-export function trackError(
-  error: Error,
-  context?: string,
-): void {
-  analyticsTracker.trackEvent('error_occurred', {
-    error: error.message,
-    context,
-    stack: error.stack,
-  });
+export function trackSorobanMirrorCompleted(properties?: {
+  success?: boolean;
+  txHash?: string;
+  durationMs?: number;
+}): void {
+  adapter.track("soroban_mirror_completed", properties);
+}
+
+/**
+ * Identify a user for analytics.
+ */
+export function identifyUser(userId: string, properties?: Record<string, unknown>): void {
+  adapter.identify(userId, properties);
+}
+
+/**
+ * Reset analytics state (e.g., on logout).
+ */
+export function resetAnalytics(): void {
+  adapter.reset();
 }

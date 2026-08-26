@@ -250,6 +250,19 @@ Bearer token that authorizes a scheduler (e.g. Vercel Cron) to trigger `POST /ap
 - **Optional.** With it unset, only maintainer sessions can trigger a sync — the endpoint never falls back to an open/unauthenticated trigger.
 - Generate the same way as `NEXTAUTH_SECRET`: `openssl rand -base64 32`
 
+### `NEXT_PUBLIC_POSTHOG_API_KEY`
+
+PostHog project API key for product analytics. When set, the dashboard tracks key events like registration completions, rechecks, and CSV exports.
+
+- **Optional.** When unset, analytics events are silently ignored (no-op) or logged to console in development.
+- **Security:** This is a public key (prefixed with `NEXT_PUBLIC_`) — PostHog project API keys are safe to expose in the browser.
+
+### `NEXT_PUBLIC_POSTHOG_HOST`
+
+PostHog instance host URL. Defaults to `https://app.posthog.com` (PostHog Cloud).
+
+- **Optional.** Only needed if using a self-hosted PostHog instance.
+
 ### `CONTRACT_SYNC_MIN_INTERVAL_MS`
 
 Minimum time between `/api/contract-sync` runs; a trigger inside this window returns `{ status: "skipped" }` instead of re-running Horizon checks for every registration. Defaults to `60000` (1 minute).
