@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { countReadyContributors } from "@/lib/contributors";
+import { useJobProgress } from "@/lib/use-job-progress";
 import type {
   ContributorRow,
   NetworkConfig,
@@ -30,8 +31,15 @@ interface ContributorsResponse {
   contributors: ContributorRow[];
 }
 
+interface BatchRecheckResponse {
+  jobId: string;
+  status: string;
+  message: string;
+}
+
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  const { activeJobId, event, isStreaming, startProgress } = useJobProgress();
 
   const contributorsQuery = useQuery({
     queryKey: ["contributors"],
@@ -46,20 +54,18 @@ export default function DashboardPage() {
     mutationFn: async () => {
       const response = await fetch("/api/contributors", { method: "POST" });
       if (!response.ok) throw new Error("Re-check failed");
-      return (await response.json()) as ContributorsResponse & {
-        refreshed: number;
-      };
+      return (await response.json()) as BatchRecheckResponse;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(["contributors"], {
-        contributors: data.contributors,
-      });
+      if (data.jobId) {
+        startProgress(data.jobId);
+      }
     },
   });
 
   const recheckOneMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/contributors/${id}`, {
+      const response = await fetch("/api/contributors/" + id, {
         method: "POST",
       });
       if (!response.ok) throw new Error("Re-check failed");
@@ -85,7 +91,7 @@ export default function DashboardPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `contributors-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = "contributors-" + new Date().toISOString().slice(0, 10) + ".csv";
       link.click();
       URL.revokeObjectURL(url);
     },
@@ -99,7 +105,7 @@ export default function DashboardPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `contributors-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = "contributors-" + new Date().toISOString().slice(0, 10) + ".json";
       link.click();
       URL.revokeObjectURL(url);
     },
@@ -145,6 +151,17 @@ export default function DashboardPage() {
   const contributors = contributorsQuery.data?.contributors ?? [];
   const readyCount = countReadyContributors(contributors);
 
+  const isRecheckRunning = recheckMutation.isPending || isStreaming;
+  const recheckStatus = event?.type === "completed"
+    ? "Completed"
+    : event?.type === "failed"
+      ? "Failed"
+      : event?.type === "processing"
+        ? "Processing..."
+        : isStreaming
+          ? "Waiting..."
+          : null;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -159,14 +176,14 @@ export default function DashboardPage() {
           <Button
             variant="stellar"
             onClick={() => recheckMutation.mutate()}
-            disabled={recheckMutation.isPending}
+            disabled={isRecheckRunning}
           >
-            {recheckMutation.isPending ? (
+            {isRecheckRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            Re-check all
+            {recheckStatus ?? "Re-check all"}
           </Button>
           <Button
             variant="outline"
@@ -183,6 +200,25 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {event?.type === "completed" && (
+        <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+          <CardContent className="py-3 text-sm text-green-800 dark:text-green-200">
+            Batch recheck completed.{" "}
+            {event.result && typeof event.result === "object" && "refreshed" in event.result
+              ? (event.result as { refreshed: number }).refreshed + " contributors refreshed."
+              : ""}
+          </CardContent>
+        </Card>
+      )}
+
+      {event?.type === "failed" && (
+        <Card className="mb-4 border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+          <CardContent className="py-3 text-sm text-red-800 dark:text-red-200">
+            Batch recheck failed: {event.error ?? "Unknown error"}
+          </CardContent>
+        </Card>
+      )}
 
       {networkQuery.data && (
         <NetworkStatusPanel config={networkQuery.data} className="mb-8" />
