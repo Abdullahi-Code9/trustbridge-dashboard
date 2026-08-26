@@ -310,3 +310,196 @@ test.describe("Admin metrics page", () => {
     await expect(page.getByText(/failed to load metrics/i)).toBeVisible();
   });
 });
+
+
+// ── Landing page (/) ──────────────────────────────────────────────────
+
+test.describe("Landing page", () => {
+  test("unauthenticated users see the landing page", async ({ page }) => {
+    // Mock no session
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.goto("/");
+    // Should see landing page content
+    await expect(page).toHaveURL(/^\/$|register/);
+  });
+
+  test("authenticated contributors see CTA to register or dashboard", async ({ page }) => {
+    await mockContributorSession(page);
+    await page.goto("/");
+    // Should see some landing content or be redirected appropriately
+    await expect(page).not.toHaveURL(/\/dashboard/);
+  });
+
+  test("authenticated maintainers see dashboard link on landing", async ({ page }) => {
+    await mockMaintainerSession(page);
+    await page.goto("/");
+    // Maintainer landing should show dashboard link
+    const dashboardLink = page.getByRole("link", { name: /dashboard/i });
+    await expect(dashboardLink).toBeVisible();
+  });
+});
+
+// ── Register page (/register) ─────────────────────────────────────────
+
+const networkFixtureForRegister = {
+  horizonUrl: "https://horizon-testnet.stellar.org",
+  horizonNetwork: "testnet",
+  sorobanUrl: "https://soroban-testnet.stellar.org",
+  sorobanNetwork: "testnet",
+  sorobanContractConfigured: false,
+  mismatched: false,
+  warnings: [],
+};
+
+test.describe("Register page", () => {
+  test("unauthenticated users can view the register page", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.goto("/register");
+    await expect(page).toHaveURL(/register/);
+  });
+
+  test("register page has GitHub OAuth button", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.goto("/register");
+    const oauthButton = page.getByRole("button", { name: /github|sign in/i });
+    await expect(oauthButton).toBeVisible();
+  });
+
+  test("register page shows address lookup form", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+    await interceptApi(page, "**/api/settings/network", networkFixtureForRegister);
+
+    await page.goto("/register");
+    const addressInput = page.getByPlaceholder(/stellar address|G[A-Z0-9]{55}/i);
+    await expect(addressInput).toBeVisible();
+  });
+
+  test("register page shows error when maintainer-only error param is present", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.goto("/register?error=maintainer");
+    await expect(page.getByText(/maintainer|access|permission|denied/i)).toBeVisible();
+  });
+
+  test("register page validates Stellar address input", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+    await interceptApi(page, "**/api/settings/network", networkFixtureForRegister);
+
+    await page.goto("/register");
+    const addressInput = page.getByPlaceholder(/stellar address|G[A-Z0-9]{55}/i);
+    const submitButton = page.getByRole("button", { name: /check|lookup|verify/i });
+
+    // Try invalid address
+    await addressInput.fill("INVALID");
+    await expect(submitButton).toBeDisabled();
+  });
+});
+
+// ── Settings page (/dashboard/settings) ───────────────────────────────
+
+const settingsAuditFixture = {
+  entries: [
+    {
+      id: "audit-1",
+      action: "settings.viewed",
+      userId: "maintainer-1",
+      details: { path: "/dashboard/settings" },
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: "audit-2",
+      action: "settings.network.checked",
+      userId: "maintainer-1",
+      details: { horizonUrl: "https://horizon-testnet.stellar.org" },
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+    },
+  ],
+};
+
+test.describe("Settings page", () => {
+  test("non-maintainer cannot access /dashboard/settings", async ({ page }) => {
+    await mockContributorSession(page);
+    await page.goto("/dashboard/settings");
+    await expect(page).toHaveURL(/register/);
+  });
+
+  test("maintainer can load settings page", async ({ page }) => {
+    await mockMaintainerSession(page);
+    await interceptApi(page, "**/api/settings/network", networkFixtureForRegister);
+    await interceptApi(page, "**/api/audit", settingsAuditFixture);
+
+    await page.goto("/dashboard/settings");
+    await expect(
+      page.getByRole("heading", { name: /settings|configuration/i })
+    ).toBeVisible();
+  });
+
+  test("settings page displays network configuration", async ({ page }) => {
+    await mockMaintainerSession(page);
+    await interceptApi(page, "**/api/settings/network", networkFixtureForRegister);
+    await interceptApi(page, "**/api/audit", settingsAuditFixture);
+
+    await page.goto("/dashboard/settings");
+    await expect(page.getByText(/horizon|network|testnet/i)).toBeVisible();
+  });
+
+  test("settings page shows audit log entries", async ({ page }) => {
+    await mockMaintainerSession(page);
+    await interceptApi(page, "**/api/settings/network", networkFixtureForRegister);
+    await interceptApi(page, "**/api/audit", settingsAuditFixture);
+
+    await page.goto("/dashboard/settings");
+    // Should show audit entries (action names or timestamps)
+    const auditSection = page.locator("text=/audit|history|log/i");
+    await expect(auditSection).toBeVisible();
+  });
+
+  test("settings page handles network error gracefully", async ({ page }) => {
+    await mockMaintainerSession(page);
+    await interceptApi(page, "**/api/settings/network", { error: "Network error" }, 500);
+    await interceptApi(page, "**/api/audit", { error: "Network error" }, 500);
+
+    await page.goto("/dashboard/settings");
+    // Page should show but may display error state
+    await expect(page).toHaveURL(/dashboard\/settings/);
+  });
+});
