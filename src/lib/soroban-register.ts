@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Registration } from "@prisma/client";
+import { rpc, Keypair, TransactionBuilder, Networks, Contract, Address } from "stellar-sdk";
 
 /**
  * Result of attempting to mirror a registration to a Soroban contract.
@@ -10,6 +11,17 @@ export interface SorobanRegistrationResult {
   success: boolean;
   txHash?: string;
   errors: string[];
+}
+
+/**
+ * Build the Soroban contract invocation to register a contributor.
+ * Format: register(contributor: Address, github_username: Bytes)
+ */
+function buildRegisterArgs(stellarAddress: string, githubUsername: string) {
+  return [
+    new Address(stellarAddress).toScVal(),
+    Buffer.from(githubUsername).toScVal(),
+  ];
 }
 
 /**
@@ -23,13 +35,16 @@ export interface SorobanRegistrationResult {
  * - Non-blocking: async fire-and-forget pattern for background sync
  *
  * @param registration - The persisted Registration object to mirror
+ * @param githubUsername - The GitHub username to associate with the registration
  * @returns Promise<SorobanRegistrationResult> with success flag and optional txHash or errors
  */
 export async function mirrorRegistrationToSoroban(
-  _registration: Registration
+  registration: Registration,
+  githubUsername?: string
 ): Promise<SorobanRegistrationResult> {
-  void _registration;
   const contractId = process.env.SOROBAN_CONTRACT_ID?.trim();
+  const rpcUrl = process.env.SOROBAN_RPC_URL?.trim() || "https://soroban-testnet.stellar.org";
+  const secretKey = process.env.SOROBAN_SECRET_KEY?.trim();
 
   // Missing contract ID is not an error state — registrations succeed with
   // SOROBAN_CONTRACT_ID unset, and the write is simply skipped.
@@ -40,25 +55,78 @@ export async function mirrorRegistrationToSoroban(
     };
   }
 
+  // Missing secret key — log and skip without failing
+  if (!secretKey) {
+    return {
+      success: false,
+      errors: ["SOROBAN_SECRET_KEY is not configured — write-through skipped"],
+    };
+  }
+
   try {
-    // Placeholder for actual Soroban write logic.
-    // In production, this would:
-    // 1. Initialize a Soroban rpc.Server with SOROBAN_RPC_URL
-    // 2. Build a contract invocation to register/update the contributor
-    // 3. Submit the transaction and wait for confirmation
-    // 4. Return the transaction hash on success
-    //
-    // For now, return a success state to indicate the endpoint is wired
-    // and ready for implementation.
+    const server = new rpc.Server(rpcUrl);
+    const sourceKeypair = Keypair.fromSecret(secretKey);
+    const sourceAccount = await server.getAccount(sourceKeypair.publicKey());
+
+    const contract = new Contract(contractId);
+    const username = githubUsername || registration.userId;
+
+    const txBuilder = new TransactionBuilder(sourceAccount, {
+      fee: "100", // 100 stroops base fee
+      networkPassphrase: Networks.PUBLIC,
+    });
+
+    const tx = txBuilder
+      .addOperation(contract.call("register", ...buildRegisterArgs(registration.stellarAddress, username)))
+      .setTimeout(30)
+      .build();
+
+    tx.sign(sourceKeypair);
+
+    const response = await server.sendTransaction(tx);
+
+    if (response.status === "PENDING") {
+      // Transaction submitted and awaiting confirmation
+      // For best-effort, we return success with the hash
+      return {
+        success: true,
+        txHash: response.hash,
+        errors: [],
+      };
+    }
+
+    if (response.status === "ERROR") {
+      const errorResult = response.errorResult as any;
+      const errorCodes = errorResult?.result?.codes;
+      const errorType = errorResult?.result?.name;
+
+      // Handle specific error cases
+      if (errorType === "txFailed") {
+        // Transaction failed on-chain (e.g. already registered)
+        return {
+          success: false,
+          errors: [`Contract call failed: ${errorType}`],
+        };
+      }
+
+      return {
+        success: false,
+        errors: [`Soroban RPC error: ${errorType || "unknown"}`],
+      };
+    }
+
+    // Transaction successful
     return {
       success: true,
-      txHash: undefined, // Would be returned by the actual contract call
+      txHash: response.hash,
       errors: [],
     };
   } catch (error) {
     // Catch and log the error without blocking the registration flow.
     const message =
       error instanceof Error ? error.message : "Unknown error writing to Soroban";
+
+    // Don't fail the HTTP request — this is best-effort
     return {
       success: false,
       errors: [`Soroban write-through failed: ${message}`],

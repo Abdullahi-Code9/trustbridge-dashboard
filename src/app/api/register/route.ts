@@ -88,17 +88,17 @@ export async function POST(request: NextRequest) {
 
     // Mirror registration to Soroban contract (best-effort, non-blocking).
     // Fire-and-forget: don't await or let failures affect the response.
-    void Promise.resolve(mirrorRegistrationToSoroban(registration)).catch(
-      (error) => {
-        console.error("Soroban registration mirror failed:", error);
-        captureException(error, {
-          route: "/api/register",
-          method: "POST",
-          operation: "soroban-mirror",
-          registrationId: registration.id,
-        });
-      }
-    );
+    void Promise.resolve(
+      mirrorRegistrationToSoroban(registration, session.user.githubUsername ?? undefined)
+    ).catch((error) => {
+      console.error("Soroban registration mirror failed:", error);
+      captureException(error, {
+        route: "/api/register",
+        method: "POST",
+        operation: "soroban-mirror",
+        registrationId: registration.id,
+      });
+    });
 
     await recordAuditLog({
       action: existing ? "registration.update" : "registration.create",

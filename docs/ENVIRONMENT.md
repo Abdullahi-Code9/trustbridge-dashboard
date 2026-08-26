@@ -226,6 +226,15 @@ CHECK_CACHE_TTL_MS=1  # 1 ms ≈ no caching
 
 ---
 
+### `SOROBAN_SECRET_KEY`
+
+Secret key for the Soroban fee-payer account used to sign write-through transactions. Required for the `mirrorRegistrationToSoroban()` function to submit transactions to the Soroban contract.
+
+- **Server-only** — never expose to the browser
+- **Required for write-through:** If unset, the write-through is skipped with a logged error (registration still succeeds)
+- **Security:** The key is used to sign transactions but never stored in the database or logs
+- Generate: Use an existing Stellar secret key or generate a new one for the fee-payer account
+
 ### `SOROBAN_CONTRACT_ID`
 
 Soroban contract ID the maintainer dashboard's **Soroban event timeline** panel reads events for. Registrations are not yet mirrored to this contract — see the write-through design note below.
