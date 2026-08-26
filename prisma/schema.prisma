@@ -21,6 +21,7 @@ model User {
   registration    Registration?
   auditLogs       TokenAuditLog[]
   addressHistory  AddressHistoryRecord[]
+  invites         Invite[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
@@ -70,7 +71,7 @@ model DisputeProof {
   registrationId String        @unique
   registration   Registration  @relation(fields: [registrationId], references: [id])
   reason         String
-  proofCid       String? // optional IPFS CID for proof document
+  proofCid       String?
   status         DisputeStatus @default(OPEN)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -85,7 +86,7 @@ model AddressHistoryRecord {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   previousAddress String?
   newAddress      String
-  changeType      String // 'initial', 'updated', 'archived'
+  changeType      String
   recordedAt      DateTime @default(now())
 
   @@index([userId])
@@ -104,6 +105,41 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([action])
+}
+
+model Invite {
+  id            String    @id @default(cuid())
+  codeHash      String    @unique
+  batchLabel    String?
+  expiresAt     DateTime?
+  used          Boolean   @default(false)
+  generatedById String
+  generatedBy   User      @relation(fields: [generatedById], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  usedAt        DateTime?
+
+  @@index([codeHash])
+  @@index([generatedById])
+  @@index([createdAt])
+}
+
+model QueueJob {
+  id           String   @id @default(cuid())
+  type         String
+  status       String   @default("pending")
+  data         Json?
+  result       Json?
+  error        String?
+  /// Owner of the job (user ID) - used to prevent leaking across orgs
+  ownerId      String?
+  createdAt    DateTime @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([createdAt])
+  @@index([type, status])
 }
 
 model Account {
