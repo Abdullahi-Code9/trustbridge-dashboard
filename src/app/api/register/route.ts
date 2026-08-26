@@ -15,6 +15,7 @@ import { validateRegistrationInput } from "@/lib/register-validation";
 import { computeReadiness } from "@/lib/readiness";
 import { captureException } from "@/lib/sentry";
 import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
+import { recordInitialAddress, recordAddressChange } from "@/lib/address-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if user is updating their address (different from current)
+    const isAddressChange = existing && existing.stellarAddress !== stellarAddress;
+
     const horizonResult = await checkStellarAddress(
       stellarAddress,
       DEFAULT_ASSET.code,
@@ -85,6 +89,15 @@ export async function POST(request: NextRequest) {
         lastCheckedAt: new Date(),
       },
     });
+
+    // Record address history
+    if (!existing) {
+      // First registration — record initial address
+      await recordInitialAddress(session.user.id, stellarAddress);
+    } else if (isAddressChange) {
+      // Address changed — record the change
+      await recordAddressChange(session.user.id, existing.stellarAddress, stellarAddress);
+    }
 
     // Mirror registration to Soroban contract (best-effort, non-blocking).
     // Fire-and-forget: don't await or let failures affect the response.
