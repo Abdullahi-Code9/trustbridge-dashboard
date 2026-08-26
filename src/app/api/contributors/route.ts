@@ -4,7 +4,8 @@ import { refreshMaintainerSession, requireMaintainerSession } from "@/lib/api-au
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getRegistryMode } from "@/lib/registry-mode";
-import { getContributors, refreshAllContributors } from "@/lib/registrations";
+import { getContributors } from "@/lib/registrations";
+import { backgroundQueue } from "@/lib/background-queue";
 import { captureException } from "@/lib/sentry";
 import type { ReadinessStatus } from "@/types";
 
@@ -24,14 +25,13 @@ export async function GET(request: NextRequest) {
 
   const readinessParam = request.nextUrl.searchParams.get("readiness");
 
-  // Validate the filter if provided
   if (
     readinessParam !== null &&
     !VALID_READINESS_FILTERS.has(readinessParam as ReadinessStatus)
   ) {
     return NextResponse.json(
       {
-        error: `Invalid readiness filter "${readinessParam}". Must be one of: ${Array.from(VALID_READINESS_FILTERS).join(", ")}`,
+        error: Invalid readiness filter "". Must be one of: ,
       },
       { status: 400 }
     );
@@ -53,9 +53,6 @@ export async function GET(request: NextRequest) {
       ...(readinessParam !== null ? { readiness: readinessParam } : {}),
     });
   } catch (error) {
-    // This route reads every registration, so a Prisma or Horizon failure here
-    // blanks the whole maintainer dashboard. Previously it surfaced only as an
-    // unhandled rejection in the platform log.
     captureException(error, {
       route: "/api/contributors",
       method: "GET",
@@ -78,40 +75,35 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const {
-      refreshed,
-      changed,
-      diffs,
-      errors = [],
-    } = await refreshAllContributors();
-    const { contributors } = await getContributors();
+    const jobId = await backgroundQueue.enqueue(
+      "recheck.batch",
+      {},
+      session.user.id
+    );
 
     await recordAuditLog({
       action: "recheck.batch.queued",
       actorId: session.user.id,
       actorLogin: session.user.githubUsername ?? null,
       metadata: {
-        refreshed,
-        changed,
-        diffs: diffs.filter((diff) => diff.changed),
-        ...(errors.length > 0 ? { errors } : {}),
+        jobId,
       },
     });
 
     return NextResponse.json({
-      refreshed,
-      contributors,
-      registryMode: getRegistryMode(),
+      jobId,
+      status: "pending",
+      message: "Batch recheck enqueued. Poll /api/contributors/queue/jobs/" + jobId + " for progress.",
     });
   } catch (error) {
     captureException(error, {
       route: "/api/contributors",
       method: "POST",
-      operation: "batch-recheck",
+      operation: "batch-recheck-enqueue",
       actorId: session.user.id,
     });
     return NextResponse.json(
-      { error: "Failed to refresh contributors" },
+      { error: "Failed to enqueue batch recheck" },
       { status: 500 }
     );
   }
