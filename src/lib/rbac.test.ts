@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("next-auth", () => ({
   getServerSession: vi.fn(),
@@ -38,7 +38,7 @@ function mockSession(role?: AppRole, isMaintainer = true) {
 describe("RBAC role hierarchy", () => {
   it("admin > operator > viewer", () => {
     expect(ROLE_HIERARCHY.admin).toBeGreaterThan(ROLE_HIERARCHY.operator);
-    expect(ROLE_HIERARCHY.operator).toBeGreaterThan(ROLE_HIERCHY.viewer);
+    expect(ROLE_HIERARCHY.operator).toBeGreaterThan(ROLE_HIERARCHY.viewer);
   });
 
   it("hasMinimumRole returns true when role meets requirement", () => {
@@ -95,7 +95,6 @@ describe("requireRole", () => {
       mockSession(undefined) as never
     );
 
-    // Should pass viewer check since maintainers get implicit viewer
     const session = await requireRole("viewer");
     expect(session).not.toBeNull();
   });
