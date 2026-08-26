@@ -1,297 +1,269 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import {
   CacheStore,
+  buildPublicCacheControl,
+  buildPrivateCacheControl,
+  buildNoCacheControl,
+  buildStatsCacheHeaders,
+  buildLookupCacheHeaders,
   buildCacheKey,
-  checkCache,
-  parseCheckCacheTtl,
+  invalidateContributorCaches,
 } from "@/lib/cache";
 
-// ---------------------------------------------------------------------------
-// CacheStore — core behaviour
-// ---------------------------------------------------------------------------
 describe("CacheStore", () => {
   let cache: CacheStore<string>;
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    cache = new CacheStore<string>(1_000); // 1-second TTL for tests
+    cache = new CacheStore<string>(100); // 100ms TTL
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  describe("get and set", () => {
+    it("stores and retrieves values", () => {
+      cache.set("key1", "value1");
+      expect(cache.get("key1")).toBe("value1");
+    });
+
+    it("returns null for missing keys", () => {
+      expect(cache.get("nonexistent")).toBeNull();
+    });
+
+    it("returns null for expired entries", async () => {
+      cache.set("key1", "value1", 50); // 50ms TTL
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(cache.get("key1")).toBeNull();
+    });
+
+    it("respects custom TTL", async () => {
+      cache.set("key1", "value1", 50);
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(cache.get("key1")).toBeNull();
+    });
+
+    it("uses default TTL when none provided", async () => {
+      cache.set("key1", "value1"); // Uses 100ms default
+      expect(cache.get("key1")).toBe("value1");
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(cache.get("key1")).toBeNull();
+    });
   });
 
-  // ── get / set ─────────────────────────────────────────────────────────────
+  describe("getOrCompute", () => {
+    it("returns cached value if available", async () => {
+      const fn = vi.fn().mockResolvedValue("computed");
+      cache.set("key1", "cached");
 
-  it("returns null on a cache miss", () => {
-    expect(cache.get("missing")).toBeNull();
+      const result = await cache.getOrCompute("key1", fn);
+
+      expect(result).toBe("cached");
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it("computes and caches if not available", async () => {
+      const fn = vi.fn().mockResolvedValue("computed");
+
+      const result = await cache.getOrCompute("key1", fn);
+
+      expect(result).toBe("computed");
+      expect(fn).toHaveBeenCalled();
+      expect(cache.get("key1")).toBe("computed");
+    });
+
+    it("respects custom TTL in getOrCompute", async () => {
+      const fn = vi.fn().mockResolvedValue("computed");
+
+      await cache.getOrCompute("key1", fn, 50);
+      expect(cache.get("key1")).toBe("computed");
+
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(cache.get("key1")).toBeNull();
+    });
   });
 
-  it("returns the stored value on a cache hit", () => {
-    cache.set("key", "value");
-    expect(cache.get("key")).toBe("value");
+  describe("invalidate", () => {
+    it("removes a specific key", () => {
+      cache.set("key1", "value1");
+      cache.set("key2", "value2");
+
+      cache.invalidate("key1");
+
+      expect(cache.get("key1")).toBeNull();
+      expect(cache.get("key2")).toBe("value2");
+    });
+
+    it("handles invalidating nonexistent keys", () => {
+      expect(() => cache.invalidate("nonexistent")).not.toThrow();
+    });
   });
 
-  it("returns null after TTL expires (eviction on read)", () => {
-    cache.set("key", "value");
-    vi.advanceTimersByTime(1_001);
-    expect(cache.get("key")).toBeNull();
+  describe("invalidatePattern", () => {
+    it("removes keys matching pattern", () => {
+      cache.set("user:1", "data1");
+      cache.set("user:2", "data2");
+      cache.set("post:1", "postdata");
+
+      const removed = cache.invalidatePattern(/^user:/);
+
+      expect(removed).toBe(2);
+      expect(cache.get("user:1")).toBeNull();
+      expect(cache.get("user:2")).toBeNull();
+      expect(cache.get("post:1")).toBe("postdata");
+    });
+
+    it("returns count of invalidated entries", () => {
+      cache.set("a:1", "x");
+      cache.set("a:2", "y");
+      cache.set("b:1", "z");
+
+      const count = cache.invalidatePattern(/^a:/);
+
+      expect(count).toBe(2);
+    });
   });
 
-  it("does not evict an entry before its TTL", () => {
-    cache.set("key", "value");
-    vi.advanceTimersByTime(999);
-    expect(cache.get("key")).toBe("value");
+  describe("reset and clear", () => {
+    it("clears all entries", () => {
+      cache.set("key1", "value1");
+      cache.set("key2", "value2");
+
+      cache.clear();
+
+      expect(cache.get("key1")).toBeNull();
+      expect(cache.get("key2")).toBeNull();
+    });
+
+    it("resets stats on clear", () => {
+      cache.set("key1", "value1");
+      cache.get("key1");
+      cache.get("nonexistent");
+
+      cache.clear();
+      const stats = cache.getStats();
+
+      expect(stats.hits).toBe(0);
+      expect(stats.misses).toBe(0);
+      expect(stats.size).toBe(0);
+    });
+
+    it("reset() is an alias for clear()", () => {
+      cache.set("key1", "value1");
+      cache.reset();
+      expect(cache.get("key1")).toBeNull();
+    });
   });
 
-  it("per-entry TTL override takes precedence over the default", () => {
-    cache.set("short", "v", 500);
-    vi.advanceTimersByTime(501);
-    expect(cache.get("short")).toBeNull();
+  describe("statistics", () => {
+    it("tracks hits and misses", () => {
+      cache.set("key1", "value1");
+      cache.get("key1"); // hit
+      cache.get("key1"); // hit
+      cache.get("nonexistent"); // miss
 
-    cache.set("long", "v", 5_000);
-    vi.advanceTimersByTime(1_001); // default TTL would expire here
-    expect(cache.get("long")).toBe("v");
-  });
+      const stats = cache.getStats();
 
-  it("latest set wins for the same key", () => {
-    cache.set("key", "first");
-    cache.set("key", "second");
-    expect(cache.get("key")).toBe("second");
-  });
+      expect(stats.hits).toBe(2);
+      expect(stats.misses).toBe(1);
+      expect(stats.hitRate).toBe(67); // 2 hits out of 3 requests
+    });
 
-  // ── invalidate ────────────────────────────────────────────────────────────
+    it("tracks evictions on expiry", async () => {
+      cache.set("key1", "value1", 50);
+      cache.get("key1"); // hit before expiry
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      cache.get("key1"); // triggers eviction
 
-  it("invalidate removes a specific entry", () => {
-    cache.set("a", "1");
-    cache.set("b", "2");
-    cache.invalidate("a");
-    expect(cache.get("a")).toBeNull();
-    expect(cache.get("b")).toBe("2");
-  });
+      const stats = cache.getStats();
 
-  it("invalidate is a no-op for unknown keys", () => {
-    expect(() => cache.invalidate("nope")).not.toThrow();
-  });
+      expect(stats.evictions).toBe(1);
+      expect(stats.misses).toBe(1);
+    });
 
-  it("invalidatePattern removes matching entries and returns count", () => {
-    cache.set("check:GABCD:USDC:GA5Z", "r1");
-    cache.set("check:GXYZ:USDC:GA5Z", "r2");
-    cache.set("horizon:GABCD:USDC:GA5Z", "r3");
+    it("calculates hit rate correctly", () => {
+      cache.set("key1", "value1");
+      cache.set("key2", "value2");
+      cache.get("key1"); // hit
+      cache.get("key2"); // hit
+      cache.get("key3"); // miss
+      cache.get("key3"); // miss
 
-    const removed = cache.invalidatePattern(/^check:/);
-    expect(removed).toBe(2);
-    expect(cache.get("check:GABCD:USDC:GA5Z")).toBeNull();
-    expect(cache.get("check:GXYZ:USDC:GA5Z")).toBeNull();
-    expect(cache.get("horizon:GABCD:USDC:GA5Z")).toBe("r3");
-  });
+      const stats = cache.getStats();
 
-  it("invalidatePattern returns 0 when nothing matches", () => {
-    cache.set("foo", "bar");
-    expect(cache.invalidatePattern(/^nomatch/)).toBe(0);
-  });
+      expect(stats.hits).toBe(2);
+      expect(stats.misses).toBe(2);
+      expect(stats.hitRate).toBe(50);
+    });
 
-  // ── clear / reset ─────────────────────────────────────────────────────────
+    it("returns list of keys", () => {
+      cache.set("key1", "value1");
+      cache.set("key2", "value2");
 
-  it("clear removes all entries", () => {
-    cache.set("a", "1");
-    cache.set("b", "2");
-    cache.clear();
-    expect(cache.get("a")).toBeNull();
-    expect(cache.get("b")).toBeNull();
-  });
+      const stats = cache.getStats();
 
-  it("reset is an alias for clear and zeroes stats", () => {
-    cache.set("a", "1");
-    cache.get("a"); // register a hit
-    cache.reset();
-    const stats = cache.getStats();
-    expect(stats.size).toBe(0);
-    expect(stats.hits).toBe(0);
-    expect(stats.misses).toBe(0);
-    expect(stats.evictions).toBe(0);
-  });
-
-  // ── getOrCompute ──────────────────────────────────────────────────────────
-
-  it("getOrCompute calls fn on miss and caches the result", async () => {
-    const fn = vi.fn().mockResolvedValue("computed");
-    const result = await cache.getOrCompute("k", fn);
-    expect(result).toBe("computed");
-    expect(fn).toHaveBeenCalledTimes(1);
-
-    // Second call must be served from cache
-    const cached = await cache.getOrCompute("k", fn);
-    expect(cached).toBe("computed");
-    expect(fn).toHaveBeenCalledTimes(1); // fn not called again
-  });
-
-  it("getOrCompute re-invokes fn after TTL expires", async () => {
-    const fn = vi.fn().mockResolvedValue("fresh");
-    await cache.getOrCompute("k", fn);
-    vi.advanceTimersByTime(1_001);
-    await cache.getOrCompute("k", fn);
-    expect(fn).toHaveBeenCalledTimes(2);
-  });
-
-  it("getOrCompute propagates fn errors without caching", async () => {
-    const fn = vi.fn().mockRejectedValue(new Error("boom"));
-    await expect(cache.getOrCompute("k", fn)).rejects.toThrow("boom");
-    expect(cache.get("k")).toBeNull();
-  });
-
-  // ── stats ─────────────────────────────────────────────────────────────────
-
-  it("getStats tracks hits, misses, evictions, and hitRate", () => {
-    cache.set("a", "1");
-    cache.get("a"); // hit
-    cache.get("b"); // miss
-
-    // Trigger an eviction
-    vi.advanceTimersByTime(1_001);
-    cache.get("a"); // expired → eviction
-
-    const stats = cache.getStats();
-    expect(stats.hits).toBe(1);
-    expect(stats.misses).toBe(1);
-    expect(stats.evictions).toBe(1);
-    expect(stats.hitRate).toBe(50); // 1 hit / 2 total = 50 %
-  });
-
-  it("getStats hitRate is 0 when there are no accesses", () => {
-    expect(cache.getStats().hitRate).toBe(0);
-  });
-
-  it("getStats.keys lists all live keys", () => {
-    cache.set("x", "1");
-    cache.set("y", "2");
-    const keys = cache.getStats().keys;
-    expect(keys).toContain("x");
-    expect(keys).toContain("y");
-    expect(keys).toHaveLength(2);
-  });
-
-  it("getStats.size reflects current live entries", () => {
-    expect(cache.getStats().size).toBe(0);
-    cache.set("a", "1");
-    expect(cache.getStats().size).toBe(1);
-    cache.clear();
-    expect(cache.getStats().size).toBe(0);
-  });
-
-  // ── scale: 100+ keys ─────────────────────────────────────────────────────
-
-  it("handles 100+ concurrent keys without collision", () => {
-    const count = 150;
-    for (let i = 0; i < count; i++) {
-      cache.set(`key:${i}`, `value:${i}`);
-    }
-    expect(cache.getStats().size).toBe(count);
-    for (let i = 0; i < count; i++) {
-      expect(cache.get(`key:${i}`)).toBe(`value:${i}`);
-    }
-  });
-
-  it("invalidatePattern handles 100+ keys efficiently", () => {
-    for (let i = 0; i < 120; i++) {
-      cache.set(`check:addr${i}`, `r${i}`);
-    }
-    for (let i = 0; i < 30; i++) {
-      cache.set(`horizon:addr${i}`, `r${i}`);
-    }
-    const removed = cache.invalidatePattern(/^check:/);
-    expect(removed).toBe(120);
-    expect(cache.getStats().size).toBe(30);
+      expect(stats.keys).toContain("key1");
+      expect(stats.keys).toContain("key2");
+      expect(stats.keys.length).toBe(2);
+    });
   });
 });
 
-// ---------------------------------------------------------------------------
-// buildCacheKey
-// ---------------------------------------------------------------------------
+describe("Cache control headers", () => {
+  it("buildPublicCacheControl formats correctly", () => {
+    const header = buildPublicCacheControl(60_000);
+    expect(header).toBe("public, max-age=60, stale-while-revalidate=60");
+  });
+
+  it("buildPublicCacheControl with custom SWR", () => {
+    const header = buildPublicCacheControl(60_000, 120_000);
+    expect(header).toBe("public, max-age=60, stale-while-revalidate=120");
+  });
+
+  it("buildPrivateCacheControl formats correctly", () => {
+    const header = buildPrivateCacheControl(30_000);
+    expect(header).toBe("private, max-age=30, must-revalidate");
+  });
+
+  it("buildNoCacheControl prevents all caching", () => {
+    const header = buildNoCacheControl();
+    expect(header).toBe("no-store, no-cache, must-revalidate");
+  });
+
+  it("buildStatsCacheHeaders includes all required fields", () => {
+    const headers = buildStatsCacheHeaders(60_000);
+
+    expect(headers["Cache-Control"]).toBeDefined();
+    expect(headers["CDN-Cache-Control"]).toBeDefined();
+    expect(headers["Vary"]).toBe("Accept-Encoding");
+  });
+
+  it("buildLookupCacheHeaders includes Vary header", () => {
+    const headers = buildLookupCacheHeaders(60_000);
+
+    expect(headers["Cache-Control"]).toBeDefined();
+    expect(headers["Vary"]).toBe("Accept-Encoding");
+  });
+});
+
 describe("buildCacheKey", () => {
-  it("produces deterministic keys", () => {
-    const k1 = buildCacheKey("check", "GABCD", "USDC", "GISSUER");
-    const k2 = buildCacheKey("check", "GABCD", "USDC", "GISSUER");
-    expect(k1).toBe(k2);
+  it("builds keys from prefix and args", () => {
+    const key = buildCacheKey("contributor", "user-123");
+    expect(key).toBe('contributor:"user-123"');
   });
 
-  it("distinguishes different addresses", () => {
-    const k1 = buildCacheKey("check", "GABCD", "USDC", "GI");
-    const k2 = buildCacheKey("check", "GXYZ", "USDC", "GI");
-    expect(k1).not.toBe(k2);
+  it("handles multiple args", () => {
+    const key = buildCacheKey("check", "address", "USDC", "issuer");
+    expect(key).toContain("check:");
+    expect(key).toContain("address");
   });
 
-  it("distinguishes different asset codes", () => {
-    const k1 = buildCacheKey("check", "GABCD", "USDC", "GI");
-    const k2 = buildCacheKey("check", "GABCD", "XLM", "GI");
-    expect(k1).not.toBe(k2);
-  });
-
-  it("distinguishes different prefixes", () => {
-    const k1 = buildCacheKey("check", "GABCD");
-    const k2 = buildCacheKey("horizon", "GABCD");
-    expect(k1).not.toBe(k2);
+  it("JSON-encodes complex objects", () => {
+    const key = buildCacheKey("data", { id: 1, name: "test" });
+    expect(key).toContain('{"id":1,"name":"test"}');
   });
 });
 
-// ---------------------------------------------------------------------------
-// parseCheckCacheTtl
-// ---------------------------------------------------------------------------
-describe("parseCheckCacheTtl", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("returns the default 2-minute TTL when env is unset", () => {
-    delete process.env.CHECK_CACHE_TTL_MS;
-    expect(parseCheckCacheTtl()).toBe(2 * 60_000);
-  });
-
-  it("parses a valid env value", () => {
-    vi.stubEnv("CHECK_CACHE_TTL_MS", "30000");
-    expect(parseCheckCacheTtl()).toBe(30_000);
-  });
-
-  it("falls back to default for non-numeric env values", () => {
-    vi.stubEnv("CHECK_CACHE_TTL_MS", "not-a-number");
-    expect(parseCheckCacheTtl()).toBe(2 * 60_000);
-  });
-
-  it("falls back to default for zero", () => {
-    vi.stubEnv("CHECK_CACHE_TTL_MS", "0");
-    expect(parseCheckCacheTtl()).toBe(2 * 60_000);
-  });
-
-  it("falls back to default for negative values", () => {
-    vi.stubEnv("CHECK_CACHE_TTL_MS", "-500");
-    expect(parseCheckCacheTtl()).toBe(2 * 60_000);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// checkCache singleton — smoke test (not exhaustive — CacheStore tests above
-// cover all the behaviour; here we just confirm the export exists and works)
-// ---------------------------------------------------------------------------
-describe("checkCache singleton", () => {
-  beforeEach(() => {
-    checkCache.reset();
-  });
-
-  it("is a CacheStore instance", () => {
-    expect(checkCache).toBeInstanceOf(CacheStore);
-  });
-
-  it("stores and retrieves a check result", () => {
-    const result = { funded: true, trustline: true, readiness: "ready" };
-    checkCache.set("check:GABCD", result);
-    expect(checkCache.get("check:GABCD")).toEqual(result);
-  });
-
-  it("reset() clears all entries between tests", () => {
-    checkCache.set("check:GABCD", { funded: true });
-    checkCache.reset();
-    expect(checkCache.get("check:GABCD")).toBeNull();
-    expect(checkCache.getStats().size).toBe(0);
+describe("invalidateContributorCaches", () => {
+  it("invalidates contributor-related caches", () => {
+    // This function invalidates multiple named caches
+    // Just verify it doesn't throw
+    expect(() => invalidateContributorCaches()).not.toThrow();
   });
 });

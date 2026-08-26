@@ -32,13 +32,16 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
    ```
 
 3. Make focused changes — one concern per PR
-4. Ensure the project builds and tests pass:
+4. Ensure the project builds, tests pass, and types are valid:
 
    ```bash
-   npm run lint
-   npm run test
-   npm run build
+   npm run lint       # ESLint
+   npm run typecheck  # TypeScript type checking
+   npm run test       # Vitest
+   npm run build      # Next.js build
    ```
+
+   All of these run in CI and must pass before merging.
 
 ---
 
@@ -49,7 +52,10 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
 - [ ] Issue linked (if applicable)
 - [ ] `.env.example` updated if new env vars added
 - [ ] Docs updated in `docs/` and linked from README
-- [ ] `npm run lint`, `npm run test`, and `npm run build` pass
+- [ ] `npm run lint` passes (ESLint)
+- [ ] `npm run typecheck` passes (TypeScript strict mode)
+- [ ] `npm run test` passes (all tests)
+- [ ] `npm run build` passes (Next.js build succeeds)
 - [ ] No secrets committed
 
 ### PR title format

@@ -1,86 +1,273 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { checkRateLimit, extractClientIp, resetRateLimit } from "@/lib/rate-limit";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import {
+  checkRateLimit,
+  extractClientIp,
+  resetRateLimit,
+} from "@/lib/rate-limit";
 import { NextRequest } from "next/server";
 
-describe("rate-limit", () => {
+describe("Rate Limiting", () => {
   beforeEach(() => {
     resetRateLimit();
+    vi.clearAllTimers();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    resetRateLimit();
   });
 
-  it("allows requests within the limit", () => {
-    const result = checkRateLimit("ip-1", { windowMs: 60000, maxRequests: 3 });
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(2);
-  });
+  describe("checkRateLimit", () => {
+    it("allows first request", () => {
+      const result = checkRateLimit("user-1");
 
-  it("blocks requests exceeding the limit", () => {
-    const opts = { windowMs: 60000, maxRequests: 2 };
-    checkRateLimit("ip-1", opts);
-    checkRateLimit("ip-1", opts);
-    const result = checkRateLimit("ip-1", opts);
-    expect(result.allowed).toBe(false);
-    expect(result.remaining).toBe(0);
-    expect(result.retryAfter).toBeGreaterThan(0);
-  });
-
-  it("resets the window after time passes", () => {
-    const opts = { windowMs: 1000, maxRequests: 1 };
-    checkRateLimit("ip-1", opts);
-    vi.advanceTimersByTime(1001);
-    const result = checkRateLimit("ip-1", opts);
-    expect(result.allowed).toBe(true);
-  });
-
-  it("tracks different identifiers independently", () => {
-    const opts = { windowMs: 60000, maxRequests: 1 };
-    checkRateLimit("ip-a", opts);
-    const result = checkRateLimit("ip-b", opts);
-    expect(result.allowed).toBe(true);
-  });
-
-  it("extracts IP from x-forwarded-for", () => {
-    const r = new NextRequest("http://localhost:3000/api/check", {
-      headers: { "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(9); // 10 max - 1 used
+      expect(result.retryAfter).toBe(0);
     });
-    expect(extractClientIp(r)).toBe("1.2.3.4");
-  });
 
-  it("extracts IP from x-real-ip", () => {
-    const r = new NextRequest("http://localhost:3000/api/check", {
-      headers: { "x-real-ip": "9.8.7.6" },
+    it("tracks remaining requests", () => {
+      for (let i = 0; i < 5; i++) {
+        checkRateLimit("user-1");
+      }
+
+      const result = checkRateLimit("user-1");
+
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(4); // 10 - 6 total
     });
-    expect(extractClientIp(r)).toBe("9.8.7.6");
-  });
 
-  it("extracts IP from cf-connecting-ip", () => {
-    const r = new NextRequest("http://localhost:3000/api/check", {
-      headers: { "cf-connecting-ip": "10.20.30.40" },
+    it("blocks after max requests", () => {
+      // Max is 10 by default
+      for (let i = 0; i < 10; i++) {
+        checkRateLimit("user-1");
+      }
+
+      const result = checkRateLimit("user-1");
+
+      expect(result.allowed).toBe(false);
+      expect(result.remaining).toBe(0);
+      expect(result.retryAfter).toBeGreaterThan(0);
     });
-    expect(extractClientIp(r)).toBe("10.20.30.40");
+
+    it("respects custom window and max", () => {
+      const result1 = checkRateLimit("user-2", {
+        windowMs: 60_000,
+        maxRequests: 3,
+      });
+      expect(result1.allowed).toBe(true);
+
+      checkRateLimit("user-2", {
+        windowMs: 60_000,
+        maxRequests: 3,
+      });
+      checkRateLimit("user-2", {
+        windowMs: 60_000,
+        maxRequests: 3,
+      });
+
+      const result4 = checkRateLimit("user-2", {
+        windowMs: 60_000,
+        maxRequests: 3,
+      });
+
+      expect(result4.allowed).toBe(false);
+    });
+
+    it("resets after window expires", () => {
+      for (let i = 0; i < 10; i++) {
+        checkRateLimit("user-3", { windowMs: 5_000, maxRequests: 10 });
+      }
+
+      let result = checkRateLimit("user-3", {
+        windowMs: 5_000,
+        maxRequests: 10,
+      });
+      expect(result.allowed).toBe(false);
+
+      // Advance past window
+      vi.advanceTimersByTime(6_000);
+
+      result = checkRateLimit("user-3", {
+        windowMs: 5_000,
+        maxRequests: 10,
+      });
+
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(9);
+    });
+
+    it("calculates retryAfter correctly", () => {
+      const opts = { windowMs: 10_000, maxRequests: 2 };
+
+      // Fill up limit at time 0
+      checkRateLimit("user-4", opts);
+      checkRateLimit("user-4", opts);
+
+      // Try at time 3_000
+      vi.advanceTimersByTime(3_000);
+      const result = checkRateLimit("user-4", opts);
+
+      // First request expires at 10_000, so retry-after is 7 seconds
+      expect(result.allowed).toBe(false);
+      expect(result.retryAfter).toBe(7);
+    });
+
+    it("tracks different identifiers separately", () => {
+      const result1 = checkRateLimit("user-a");
+      const result2 = checkRateLimit("user-b");
+
+      expect(result1.allowed).toBe(true);
+      expect(result2.allowed).toBe(true);
+      expect(result1.remaining).toBe(9);
+      expect(result2.remaining).toBe(9);
+    });
+
+    it("uses environment defaults", () => {
+      process.env.RATE_LIMIT_WINDOW_MS = "30000";
+      process.env.RATE_LIMIT_MAX_REQUESTS = "5";
+
+      // Fill to max with env defaults
+      for (let i = 0; i < 5; i++) {
+        checkRateLimit("env-user");
+      }
+
+      const result = checkRateLimit("env-user");
+
+      expect(result.allowed).toBe(false);
+      expect(result.retryAfter).toBeGreaterThan(0);
+
+      delete process.env.RATE_LIMIT_WINDOW_MS;
+      delete process.env.RATE_LIMIT_MAX_REQUESTS;
+    });
+
+    it("handles invalid env vars gracefully", () => {
+      process.env.RATE_LIMIT_MAX_REQUESTS = "invalid";
+
+      const result = checkRateLimit("user-5");
+
+      // Should use default (10)
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(9);
+
+      delete process.env.RATE_LIMIT_MAX_REQUESTS;
+    });
   });
 
-  it("falls back to unknown when no IP headers present", () => {
-    const r = new NextRequest("http://localhost:3000/api/check");
-    expect(extractClientIp(r)).toBe("unknown");
+  describe("extractClientIp", () => {
+    it("extracts from x-forwarded-for header", () => {
+      const request = new NextRequest("http://localhost:3000", {
+        method: "GET",
+        headers: {
+          "x-forwarded-for": "192.168.1.1, 10.0.0.1",
+        },
+      });
+
+      const ip = extractClientIp(request);
+
+      expect(ip).toBe("192.168.1.1");
+    });
+
+    it("uses x-real-ip if x-forwarded-for missing", () => {
+      const request = new NextRequest("http://localhost:3000", {
+        method: "GET",
+        headers: {
+          "x-real-ip": "203.0.113.5",
+        },
+      });
+
+      const ip = extractClientIp(request);
+
+      expect(ip).toBe("203.0.113.5");
+    });
+
+    it("uses cf-connecting-ip if other headers missing", () => {
+      const request = new NextRequest("http://localhost:3000", {
+        method: "GET",
+        headers: {
+          "cf-connecting-ip": "198.51.100.1",
+        },
+      });
+
+      const ip = extractClientIp(request);
+
+      expect(ip).toBe("198.51.100.1");
+    });
+
+    it("returns 'unknown' if no IP headers present", () => {
+      const request = new NextRequest("http://localhost:3000", {
+        method: "GET",
+        headers: {},
+      });
+
+      const ip = extractClientIp(request);
+
+      expect(ip).toBe("unknown");
+    });
+
+    it("prioritizes x-forwarded-for over other headers", () => {
+      const request = new NextRequest("http://localhost:3000", {
+        method: "GET",
+        headers: {
+          "x-forwarded-for": "192.168.1.1",
+          "x-real-ip": "203.0.113.5",
+          "cf-connecting-ip": "198.51.100.1",
+        },
+      });
+
+      const ip = extractClientIp(request);
+
+      expect(ip).toBe("192.168.1.1");
+    });
+
+    it("trims whitespace from headers", () => {
+      const request = new NextRequest("http://localhost:3000", {
+        method: "GET",
+        headers: {
+          "x-real-ip": "  192.168.1.1  ",
+        },
+      });
+
+      const ip = extractClientIp(request);
+
+      expect(ip).toBe("192.168.1.1");
+    });
   });
 
-  it("uses defaults when env is not set", () => {
-    const result = checkRateLimit("ip-1");
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(9); // default max is 10
-  });
+  describe("resetRateLimit", () => {
+    it("resets specific identifier", () => {
+      for (let i = 0; i < 10; i++) {
+        checkRateLimit("user-x");
+      }
 
-  it("ignores malformed env values and uses defaults", () => {
-    vi.stubEnv("RATE_LIMIT_WINDOW_MS", "not-a-number");
-    vi.stubEnv("RATE_LIMIT_MAX_REQUESTS", "not-a-number");
-    const result = checkRateLimit("ip-1");
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(9);
-    vi.unstubAllEnvs();
+      let result = checkRateLimit("user-x");
+      expect(result.allowed).toBe(false);
+
+      resetRateLimit("user-x");
+
+      result = checkRateLimit("user-x");
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(9);
+    });
+
+    it("resets all identifiers when no argument", () => {
+      for (let i = 0; i < 10; i++) {
+        checkRateLimit("user-a");
+        checkRateLimit("user-b");
+      }
+
+      let resultA = checkRateLimit("user-a");
+      let resultB = checkRateLimit("user-b");
+      expect(resultA.allowed).toBe(false);
+      expect(resultB.allowed).toBe(false);
+
+      resetRateLimit();
+
+      resultA = checkRateLimit("user-a");
+      resultB = checkRateLimit("user-b");
+      expect(resultA.allowed).toBe(true);
+      expect(resultB.allowed).toBe(true);
+    });
   });
 });
