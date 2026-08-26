@@ -40,6 +40,13 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
    npm run build
    ```
 
+### End-to-end tests
+
+Playwright tests use intercepted NextAuth sessions and mocked API responses, so
+they never call GitHub OAuth or production services. Install Chromium once with
+`npx playwright install chromium`, then run `npm run test:e2e`. GitHub Actions
+runs the same suite with `npx playwright install --with-deps chromium`.
+
 ---
 
 ## Pull request guidelines

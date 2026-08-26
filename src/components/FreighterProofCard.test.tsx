@@ -65,4 +65,18 @@ describe("FreighterProofCard", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("signs the challenge with the detected Freighter API", async () => {
+    const signMessage = vi.fn().mockResolvedValue({ signature: "signed" });
+    window.freighterApi = { signMessage };
+
+    render(<FreighterProofCard proof={proof} addressReady />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Sign challenge/i }));
+
+    await waitFor(() => {
+      expect(signMessage).toHaveBeenCalledWith(proof.challenge);
+      expect(screen.getByRole("button", { name: /Challenge signed/i })).toBeInTheDocument();
+    });
+  });
 });

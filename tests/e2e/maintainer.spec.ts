@@ -68,7 +68,11 @@ const statsFixture = { totalContributors: 3, readyCount: 1, readyPercent: 33 };
 
 async function setupDashboard(page: Parameters<typeof interceptApi>[0]) {
   await mockMaintainerSession(page);
-  await interceptApi(page, "**/api/contributors", contributorsFixture);
+  await interceptApi(page, "**/api/contributors/paginated**", {
+    ...contributorsFixture,
+    total: contributorsFixture.contributors.length,
+    hasMore: false,
+  });
   await interceptApi(page, "**/api/settings/network", networkFixture);
   await interceptApi(page, "**/api/soroban/events", sorobanFixture);
   await interceptApi(page, "**/api/stats", statsFixture);

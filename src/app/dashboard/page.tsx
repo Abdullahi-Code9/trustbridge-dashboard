@@ -8,6 +8,7 @@ import {
   exportContributorsCsv,
 } from "@/components/ContributorTable";
 import { NetworkStatusPanel } from "@/components/NetworkStatusPanel";
+import { DisputePanel } from "@/components/DisputePanel";
 import { SorobanEventTimeline } from "@/components/SorobanEventTimeline";
 import { WaveReadinessBar } from "@/components/WaveReadinessBar";
 import { WavePrepWorkspace } from "@/components/WavePrepWorkspace";
@@ -20,15 +21,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { countReadyContributors } from "@/lib/contributors";
-import { useJobProgress } from "@/lib/use-job-progress";
+import {
+  flattenContributorPages,
+  useInfiniteContributors,
+} from "@/lib/use-infinite-contributors";
 import type {
   ContributorRow,
   NetworkConfig,
   SorobanEventTimelineResponse,
 } from "@/types";
 
-interface ContributorsResponse {
+interface RecheckResponse {
   contributors: ContributorRow[];
+  refreshed: number;
 }
 
 interface BatchRecheckResponse {
@@ -39,27 +44,16 @@ interface BatchRecheckResponse {
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
-  const { activeJobId, event, isStreaming, startProgress } = useJobProgress();
-
-  const contributorsQuery = useQuery({
-    queryKey: ["contributors"],
-    queryFn: async () => {
-      const response = await fetch("/api/contributors");
-      if (!response.ok) throw new Error("Failed to load contributors");
-      return (await response.json()) as ContributorsResponse;
-    },
-  });
+  const contributorsQuery = useInfiniteContributors();
 
   const recheckMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/contributors", { method: "POST" });
       if (!response.ok) throw new Error("Re-check failed");
-      return (await response.json()) as BatchRecheckResponse;
+      return (await response.json()) as RecheckResponse;
     },
-    onSuccess: (data) => {
-      if (data.jobId) {
-        startProgress(data.jobId);
-      }
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["contributors"] });
     },
   });
 
@@ -71,15 +65,8 @@ export default function DashboardPage() {
       if (!response.ok) throw new Error("Re-check failed");
       return (await response.json()) as { contributor: ContributorRow };
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData<ContributorsResponse>(
-        ["contributors"],
-        (current) => ({
-          contributors: (current?.contributors ?? []).map((row) =>
-            row.id === data.contributor.id ? data.contributor : row
-          ),
-        })
-      );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contributors"] });
     },
   });
 
@@ -148,7 +135,7 @@ export default function DashboardPage() {
     },
   });
 
-  const contributors = contributorsQuery.data?.contributors ?? [];
+  const contributors = flattenContributorPages(contributorsQuery.data);
   const readyCount = countReadyContributors(contributors);
 
   const isRecheckRunning = recheckMutation.isPending || isStreaming;
@@ -265,6 +252,9 @@ export default function DashboardPage() {
           contributors={contributors}
           onExport={() => exportContributorsCsv(contributors)}
           onRecheck={(id) => recheckOneMutation.mutate(id)}
+          onLoadMore={() => void contributorsQuery.fetchNextPage()}
+          hasMore={Boolean(contributorsQuery.hasNextPage)}
+          isLoadingMore={contributorsQuery.isFetchingNextPage}
           recheckingId={
             recheckOneMutation.isPending
               ? (recheckOneMutation.variables ?? null)
@@ -272,6 +262,8 @@ export default function DashboardPage() {
           }
         />
       )}
+
+      <DisputePanel contributors={contributors} />
 
       <Card className="mt-8">
         <CardHeader>
