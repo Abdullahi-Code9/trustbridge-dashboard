@@ -1,20 +1,18 @@
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 
 import { authOptions } from "@/lib/auth";
 import { recordAuditLog } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
+import {
+  createInvite,
+  generateInviteCode,
+  listInvites,
+  revokeInvites,
+} from "@/lib/invite-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-interface InviteLink {
-  code: string;
-  createdAt: string;
-  expiresAt: string | null;
-  used: boolean;
-}
 
 interface GenerateBulkInvitesRequest {
   count: number;
@@ -23,7 +21,7 @@ interface GenerateBulkInvitesRequest {
 
 interface GenerateBulkInvitesResponse {
   generated: number;
-  invites: InviteLink[];
+  invites: Array<{ code: string; createdAt: string; expiresAt: string | null }>;
 }
 
 export async function POST(request: NextRequest) {
@@ -53,19 +51,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const invites: InviteLink[] = [];
   const now = new Date();
   const expiresAt = expiryDays
     ? new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000)
     : null;
 
+  const generatedInvites: Array<{ code: string; createdAt: string; expiresAt: string | null }> = [];
+
   for (let i = 0; i < count; i++) {
-    const code = randomBytes(24).toString("hex");
-    invites.push({
+    const code = generateInviteCode();
+    const invite = await createInvite({
       code,
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt?.toISOString() ?? null,
-      used: false,
+      generatedById: session.user.id,
+      expiresAt,
+    });
+    generatedInvites.push({
+      code,
+      createdAt: invite.createdAt.toISOString(),
+      expiresAt: invite.expiresAt?.toISOString() ?? null,
     });
   }
 
@@ -80,8 +83,8 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json({
-    generated: invites.length,
-    invites,
+    generated: generatedInvites.length,
+    invites: generatedInvites,
   } satisfies GenerateBulkInvitesResponse);
 }
 
@@ -96,18 +99,21 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
   const pageSize = Math.min(100, parseInt(searchParams.get("pageSize") ?? "20"));
 
-  // In a real implementation, these would be stored in the database
-  // For now, return a paginated empty list structure
-  const totalCount = 0;
-  const invites: InviteLink[] = [];
-  const totalPages = Math.ceil(totalCount / pageSize);
+  const result = await listInvites(session.user.id, page, pageSize);
 
   return NextResponse.json({
     page,
     pageSize,
-    totalCount,
-    totalPages,
-    invites,
+    totalCount: result.total,
+    totalPages: result.totalPages,
+    invites: result.invites.map((invite) => ({
+      id: invite.id,
+      batchLabel: invite.batchLabel,
+      expiresAt: invite.expiresAt?.toISOString() ?? null,
+      used: invite.used,
+      usedAt: invite.usedAt?.toISOString() ?? null,
+      createdAt: invite.createdAt.toISOString(),
+    })),
   });
 }
 
@@ -138,16 +144,19 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
+  const { revoked } = await revokeInvites(codes, session.user.id);
+
   await recordAuditLog({
     action: "invites.bulk_delete",
     actorId: session.user.id,
     actorLogin: session.user.githubUsername ?? null,
     metadata: {
-      count: codes.length,
+      requestedCount: codes.length,
+      revokedCount: revoked,
     },
   });
 
   return NextResponse.json({
-    deleted: codes.length,
+    deleted: revoked,
   });
 }
