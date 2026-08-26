@@ -201,7 +201,38 @@ CSV columns: `github_username`, `stellar_address`, `readiness`, `funded`, `trust
 
 ---
 
-## Frontend architecture
+## Contract sync
+
+The `syncContractToPostgres()` function (`src/lib/contract-sync.ts`) performs a TRUE contract→Postgres sync, reading on-chain registrations and updating Postgres accordingly. This is distinct from Horizon re-checks, which refresh account balances and trustline status.
+
+### How it works
+
+1. **Fetch from contract:** Calls `get_registered_paginated()` on the Soroban contract to get all on-chain registrations
+2. **Merge into Postgres:** For each on-chain registration:
+   - If exists in Postgres but not in contract → keep it (don't delete)
+   - If exists in contract but not in Postgres → log it (can't create without a user)
+   - If exists in both → update GitHub username if changed
+3. **Rate-limited:** Respects `CONTRACT_SYNC_MIN_INTERVAL_MS` to prevent hammering the RPC
+4. **Never throws:** All errors are caught and returned in the result
+
+### Merge rules
+
+| Contract | Postgres | Action |
+|----------|----------|--------|
+| ✅ | ✅ | Update if GitHub username changed |
+| ✅ | ❌ | Log (can't create without a user) |
+| ❌ | ✅ | Keep (don't delete from Postgres) |
+
+### Horizon re-check vs Contract sync
+
+| Feature | Horizon Re-check | Contract Sync |
+|---------|------------------|---------------|
+| Purpose | Refresh account balances, trustline status | Sync on-chain registrations |
+| Trigger | Manual (maintainer) or batch | Scheduler (cron) |
+| Function | `refreshAllContributors()` | `syncContractToPostgres()` |
+| Route | `POST /api/contributors` | `POST /api/contract-sync` |
+
+---
 
 | Concern | Approach |
 |---------|----------|
