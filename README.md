@@ -472,3 +472,515 @@ This project is licensed under the [MIT License](LICENSE).
 - [Setup guide](./docs/SETUP.md)
 - [Stellar Horizon API](https://developers.stellar.org/docs/data/apis/horizon)
 - [Stellar USDC trustlines](https://developers.stellar.org/docs/learn/fundamentals/stellar-data-structures/accounts/trustlines)
+TODO — Maintainer Roles UI: Viewer vs Operator vs Admin With Audit
+
+Complexity: High — 200 points
+
+Objective: Build an admin-only UI and API for managing existing dashboard RBAC roles, with complete auditing and protection against privilege escalation and removal of the final administrator.
+
+1. Review Existing RBAC
+
+[ ] Locate the RBAC implementation from the dependent RBAC issue.
+
+[ ] Read existing role definitions.
+
+[ ] Reuse the existing role model.
+
+[ ] Do not introduce a third role system.
+
+[ ] Identify viewer.
+
+[ ] Identify operator.
+
+[ ] Identify admin.
+
+[ ] Identify existing permission checks.
+
+[ ] Identify existing GitHub team-to-role mapping.
+
+[ ] Identify how GitHub membership is currently enforced.
+
+[ ] Identify current authenticated-user helpers.
+
+[ ] Identify existing admin authorization middleware/helpers.
+
+[ ] Identify existing Prisma user/member models.
+
+[ ] Identify existing audit implementation.
+
+[ ] Identify existing CSRF protections.
+
+[ ] Review existing settings page structure.
+
+[ ] Review existing API conventions.
+
+[ ] Review existing test patterns.
+
+
+2. Define Role Management Rules
+
+[ ] Document the meaning of each role.
+
+[ ] Confirm viewer permissions.
+
+[ ] Confirm operator permissions.
+
+[ ] Confirm admin permissions.
+
+[ ] Confirm only admins can assign roles.
+
+[ ] Confirm operators cannot modify roles.
+
+[ ] Confirm viewers cannot modify roles.
+
+[ ] Confirm users must remain GitHub organization members.
+
+[ ] Decide behavior when a GitHub member is removed.
+
+[ ] Ensure role assignment does not bypass GitHub membership.
+
+[ ] Ensure role changes use the existing RBAC model.
+
+[ ] Define whether admins can modify their own role.
+
+[ ] Prevent an admin from accidentally removing the final admin.
+
+[ ] Prevent the final admin from being demoted.
+
+[ ] Prevent the final admin from being deleted through this UI.
+
+
+3. Settings UI
+
+[ ] Open src/app/dashboard/settings/page.tsx.
+
+[ ] Add a roles/maintainers section.
+
+[ ] Display dashboard users who are eligible for role management.
+
+[ ] Display username/display name using existing safe fields.
+
+[ ] Display current role.
+
+[ ] Display GitHub membership status where appropriate.
+
+[ ] Display role options using existing RBAC values.
+
+[ ] Add role selector.
+
+[ ] Add explicit save/update action.
+
+[ ] Show loading state.
+
+[ ] Show success state.
+
+[ ] Show API errors.
+
+[ ] Disable controls while saving.
+
+[ ] Prevent unauthorized users from seeing mutation controls.
+
+[ ] Keep UI usable on mobile.
+
+[ ] Clearly identify admin accounts.
+
+[ ] Clearly warn before sensitive role changes.
+
+[ ] Require confirmation for admin promotion/demotion if appropriate.
+
+[ ] Show last-admin protection errors clearly.
+
+[ ] Do not expose secrets or sensitive authentication data.
+
+[ ] Do not expose unnecessary personal information.
+
+
+4. Role Assignment API
+
+[ ] Add/extend an API endpoint under src/app/api/.
+
+[ ] Require an authenticated user.
+
+[ ] Require the caller to have admin permissions.
+
+[ ] Validate the target user.
+
+[ ] Validate the requested role.
+
+[ ] Reject unknown roles.
+
+[ ] Reject malformed user identifiers.
+
+[ ] Verify the target user belongs to the supported GitHub organization.
+
+[ ] Verify the target user is still an eligible GitHub member.
+
+[ ] Do not trust role information supplied by the browser.
+
+[ ] Do not trust client-side admin checks.
+
+[ ] Perform authorization server-side.
+
+[ ] Perform last-admin validation server-side.
+
+[ ] Make the update atomic where necessary.
+
+[ ] Return a safe success response.
+
+[ ] Return 401 for unauthenticated requests.
+
+[ ] Return 403 for unauthorized requests.
+
+[ ] Return 400 for malformed requests.
+
+[ ] Return 404 for unknown targets where appropriate.
+
+[ ] Return a clear conflict/error for last-admin protection.
+
+[ ] Avoid leaking internal database information.
+
+
+5. Privilege Escalation Protection
+
+[ ] Never allow a viewer to assign themselves admin.
+
+[ ] Never allow an operator to assign themselves admin.
+
+[ ] Never trust a submitted role=admin value.
+
+[ ] Verify caller permissions using server-side RBAC.
+
+[ ] Verify target identity server-side.
+
+[ ] Prevent authorization based solely on GitHub team names from the request.
+
+[ ] Prevent changing another user's role through manipulated IDs.
+
+[ ] Validate organization membership independently.
+
+[ ] Ensure role changes cannot grant permissions outside the existing RBAC model.
+
+[ ] Review all mutation paths for equivalent bypasses.
+
+[ ] Ensure API and UI enforce the same policy.
+
+
+6. Last Admin Protection
+
+[ ] Determine how administrators are counted.
+
+[ ] Count active admins transactionally.
+
+[ ] Reject demotion of the final admin.
+
+[ ] Reject removal/deactivation of the final admin.
+
+[ ] Reject changing the final admin to viewer.
+
+[ ] Reject changing the final admin to operator.
+
+[ ] Ensure simultaneous requests cannot bypass the protection.
+
+[ ] Use database transaction/locking strategy where supported.
+
+[ ] Test concurrent admin changes.
+
+[ ] Ensure failed last-admin changes do not partially update data.
+
+[ ] Return a clear API error.
+
+[ ] Display the error in the settings UI.
+
+
+7. GitHub Membership Enforcement
+
+[ ] Preserve the existing GitHub membership requirement.
+
+[ ] Do not allow role assignment to non-members unless explicitly documented.
+
+[ ] Reuse existing GitHub organization membership checks.
+
+[ ] Avoid duplicating membership logic.
+
+[ ] Handle stale membership data safely.
+
+[ ] Decide behavior when GitHub membership lookup fails.
+
+[ ] Fail closed for authorization-sensitive operations.
+
+[ ] Ensure GitHub team mapping remains compatible.
+
+[ ] Document the relationship between GitHub membership and dashboard roles.
+
+[ ] Test non-member role assignment.
+
+
+8. Audit Integration
+
+[ ] Open src/lib/audit.ts.
+
+[ ] Reuse the existing audit infrastructure.
+
+[ ] Do not create a separate audit model.
+
+[ ] Record every successful role change.
+
+[ ] Record attempted unauthorized role changes where existing audit policy allows.
+
+[ ] Record the acting administrator.
+
+[ ] Record the target user.
+
+[ ] Record previous role.
+
+[ ] Record new role.
+
+[ ] Record timestamp.
+
+[ ] Record relevant request/context identifier if supported.
+
+[ ] Avoid recording passwords.
+
+[ ] Avoid recording JWTs.
+
+[ ] Avoid recording webhook secrets.
+
+[ ] Avoid unnecessary PII.
+
+[ ] Ensure audit entries cannot be modified through the role UI.
+
+[ ] Ensure failed role changes do not create misleading success events.
+
+[ ] Ensure audit writes happen with the role mutation.
+
+[ ] Ensure audit failure behavior is explicitly defined.
+
+
+9. CSRF Protection
+
+[ ] Review existing CSRF strategy.
+
+[ ] Apply the existing CSRF mechanism to role mutations.
+
+[ ] Ensure browser requests cannot forge role changes.
+
+[ ] Validate origin/request protection where applicable.
+
+[ ] Do not rely on UI visibility as CSRF protection.
+
+[ ] Test forged mutation requests.
+
+[ ] Test missing CSRF protection.
+
+[ ] Ensure API clients follow the existing authentication contract.
+
+[ ] Avoid introducing a custom CSRF implementation unnecessarily.
+
+
+10. Prisma / Database
+
+[ ] Determine whether the existing RBAC schema supports this feature.
+
+[ ] Avoid creating a duplicate role model.
+
+[ ] Add schema changes only if required.
+
+[ ] Add migration if necessary.
+
+[ ] Ensure existing roles remain valid.
+
+[ ] Add appropriate constraints/indexes if needed.
+
+[ ] Use transactions for role + audit operations where appropriate.
+
+[ ] Ensure concurrent requests cannot bypass last-admin protection.
+
+[ ] Verify migration against existing development data.
+
+[ ] Verify rollback/recovery expectations.
+
+
+11. API Tests
+
+[ ] Test authenticated admin can list/manage roles.
+
+[ ] Test viewer cannot modify roles.
+
+[ ] Test operator cannot modify roles.
+
+[ ] Test unauthenticated request.
+
+[ ] Test invalid role.
+
+[ ] Test invalid target user.
+
+[ ] Test unknown target user.
+
+[ ] Test non-member target.
+
+[ ] Test valid viewer assignment.
+
+[ ] Test valid operator assignment.
+
+[ ] Test valid admin assignment.
+
+[ ] Test self-promotion attempt.
+
+[ ] Test unauthorized privilege escalation.
+
+[ ] Test CSRF failure.
+
+[ ] Test last-admin demotion.
+
+[ ] Test last-admin removal.
+
+[ ] Test concurrent last-admin changes.
+
+[ ] Test audit record creation.
+
+[ ] Test failed changes do not produce successful audit entries.
+
+
+12. UI Tests
+
+[ ] Test roles section renders.
+
+[ ] Test current roles are displayed.
+
+[ ] Test admin sees role controls.
+
+[ ] Test viewer does not get mutation controls.
+
+[ ] Test operator does not get mutation controls.
+
+[ ] Test role selector options.
+
+[ ] Test successful update.
+
+[ ] Test API failure.
+
+[ ] Test last-admin error.
+
+[ ] Test non-member error.
+
+[ ] Test loading state.
+
+[ ] Test confirmation flow if implemented.
+
+[ ] Test UI does not claim success when API fails.
+
+[ ] Test updated role appears after successful mutation.
+
+
+13. Security Tests
+
+[ ] Test manipulated target user ID.
+
+[ ] Test manipulated role value.
+
+[ ] Test caller impersonation attempt.
+
+[ ] Test stale admin session.
+
+[ ] Test non-member caller.
+
+[ ] Test non-member target.
+
+[ ] Test forged CSRF request.
+
+[ ] Test cross-user role modification.
+
+[ ] Test privilege escalation.
+
+[ ] Test final-admin protection.
+
+[ ] Test concurrent role mutations.
+
+[ ] Verify audit data cannot leak credentials.
+
+[ ] Verify API errors do not reveal sensitive internals.
+
+
+14. Documentation
+
+[ ] Document viewer, operator, and admin.
+
+[ ] Document who can assign roles.
+
+[ ] Document GitHub organization membership requirement.
+
+[ ] Document GitHub team mapping interaction.
+
+[ ] Document last-admin protection.
+
+[ ] Document audit behavior.
+
+[ ] Document CSRF/security requirements.
+
+[ ] Document any new environment variables.
+
+[ ] Document API endpoints.
+
+[ ] Document compatibility with existing RBAC.
+
+[ ] Document expected behavior when GitHub membership changes.
+
+
+15. Final Validation
+
+[ ] Run npm test.
+
+[ ] Verify RBAC tests pass.
+
+[ ] Verify API tests pass.
+
+[ ] Verify UI tests pass.
+
+[ ] Verify audit tests pass.
+
+[ ] Verify no existing authentication behavior regressed.
+
+[ ] Verify GitHub membership is still required.
+
+[ ] Verify last admin cannot be removed.
+
+[ ] Verify every successful role change is audited.
+
+[ ] Verify unauthorized users cannot mutate roles.
+
+[ ] Verify CSRF protection works.
+
+[ ] Verify no third RBAC model was introduced.
+
+[ ] Review the complete security-sensitive diff.
+
+
+PR Checklist
+
+[ ] Admin role-management UI included.
+
+[ ] Role-management API included.
+
+[ ] Existing RBAC model reused.
+
+[ ] GitHub membership requirement preserved.
+
+[ ] Privilege escalation prevented.
+
+[ ] CSRF protection included.
+
+[ ] Last-admin protection included.
+
+[ ] Every successful change audited.
+
+[ ] Tests included.
+
+[ ] Security regression tests included.
+
+[ ] Documentation updated.
+
+[ ] npm test passes.
+
+[ ] No HR functionality added.
+
+[ ] No duplicate RBAC model introduced.
