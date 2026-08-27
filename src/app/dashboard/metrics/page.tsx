@@ -75,7 +75,10 @@ export default function MetricsPage() {
 
   if (metricsQuery.isError) {
     return (
-      <p className="text-destructive py-8">
+      <p
+        className="my-8 rounded-lg border border-destructive/60 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
         Failed to load metrics. Make sure you are signed in as a maintainer.
       </p>
     );
@@ -129,7 +132,7 @@ export default function MetricsPage() {
               ≥ 7:1 contrast against the page background (WCAG AAA).
               Light mode: -700 on white/tinted bg gives ≥ 6.5:1 (WCAG AA). */}
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-4 dark:border-emerald-800 dark:bg-emerald-950/40">
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-4 dark:border-emerald-600 dark:bg-emerald-950/40">
               <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
                 {contributors.byStatus.ready}
               </p>
@@ -137,7 +140,7 @@ export default function MetricsPage() {
                 ✅ Ready
               </p>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-4 dark:border-amber-800 dark:bg-amber-950/40">
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-4 dark:border-amber-600 dark:bg-amber-950/40">
               <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">
                 {contributors.byStatus.low_reserve}
               </p>
@@ -145,7 +148,7 @@ export default function MetricsPage() {
                 ⚠️ Low reserve
               </p>
             </div>
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 dark:border-red-800 dark:bg-red-950/40">
+            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-4 dark:border-red-600 dark:bg-red-950/40">
               <p className="text-2xl font-bold text-red-700 dark:text-red-300">
                 {contributors.byStatus.not_ready}
               </p>
@@ -178,24 +181,44 @@ export default function MetricsPage() {
               No audit events recorded yet.
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 font-medium">Action</th>
-                  <th className="pb-2 text-right font-medium">Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(audit.byAction)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([action, count]) => (
-                    <tr key={action} className="border-b last:border-0">
-                      <td className="py-2 font-mono text-xs">{action}</td>
-                      <td className="py-2 text-right tabular-nums">{count}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              {/* `border-border-strong` rather than the default hairline: these
+                  row rules are the only thing separating one action count from
+                  the next, and the hairline is invisible on the dark page. */}
+              <table className="w-full min-w-[320px] text-sm">
+                <caption className="sr-only">
+                  Audit log entry counts by action, most frequent first.
+                </caption>
+                <thead>
+                  <tr className="border-b-2 border-border-strong text-left text-muted-foreground">
+                    <th scope="col" className="pb-2 font-medium">
+                      Action
+                    </th>
+                    <th scope="col" className="pb-2 text-right font-medium">
+                      Count
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(audit.byAction)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([action, count]) => (
+                      <tr
+                        key={action}
+                        className="border-b border-border-strong last:border-0"
+                      >
+                        <th
+                          scope="row"
+                          className="py-2 text-left font-mono text-xs font-normal"
+                        >
+                          {action}
+                        </th>
+                        <td className="py-2 text-right tabular-nums">{count}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -266,10 +289,12 @@ function ConfigRow({
   hint: string;
 }) {
   return (
-    <div className="rounded-md border px-3 py-2">
+    <div className="rounded-md border border-border-strong px-3 py-2">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 font-medium">{value}</dd>
-      <dd className="mt-0.5 font-mono text-xs text-muted-foreground/70">{hint}</dd>
+      {/* Full-strength muted foreground: the env-var name is the part a
+          maintainer copies, so it should not be the faintest thing on screen. */}
+      <dd className="mt-0.5 font-mono text-xs text-muted-foreground">{hint}</dd>
     </div>
   );
 }

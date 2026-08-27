@@ -250,7 +250,10 @@ export default function DashboardPage() {
       ) : (
         <ContributorTable
           contributors={contributors}
-          onExport={() => exportContributorsCsv(contributors)}
+          // `force`: ContributorTable has already shown the accessible export
+          // confirmation, staleness warning included. Leaving this unforced
+          // stacks a second, native `window.confirm()` on top of it.
+          onExport={() => exportContributorsCsv(contributors, true)}
           onRecheck={(id) => recheckOneMutation.mutate(id)}
           onLoadMore={() => void contributorsQuery.fetchNextPage()}
           hasMore={Boolean(contributorsQuery.hasNextPage)}

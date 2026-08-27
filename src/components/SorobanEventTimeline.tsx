@@ -76,22 +76,43 @@ export function SorobanEventTimeline({
       </div>
 
       {errors.length > 0 && (
-        <ul className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <ul
+          className="rounded-lg border border-destructive/60 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          role="alert"
+        >
           {errors.map((error) => (
             <li key={error}>• {error}</li>
           ))}
         </ul>
       )}
 
-      <div className="overflow-x-auto rounded-xl border">
+      {/* Dark mode: the default hairline border sits at ~1.6:1 on the page, so
+          a wall of monospace hashes ran together with nothing separating the
+          rows. `border-border-strong` clears WCAG 1.4.11's 3:1 in both themes,
+          and the header keeps its muted tint rather than a saturated fill —
+          see `dark-mode-contrast-audit.test.ts`. */}
+      <div className="overflow-x-auto rounded-xl border border-border-strong">
         <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-muted/50">
+          <caption className="sr-only">
+            Soroban contract events, newest ledger first.
+          </caption>
+          <thead className="border-b-2 border-border-strong bg-muted/50">
             <tr className="text-left">
-              <th className="px-4 py-3 font-medium">Type</th>
-              <th className="px-4 py-3 font-medium">Ledger</th>
-              <th className="px-4 py-3 font-medium">Contract</th>
-              <th className="px-4 py-3 font-medium">Topic</th>
-              <th className="px-4 py-3 font-medium">Closed</th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Type
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Ledger
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Contract
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Topic
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Closed
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -108,7 +129,10 @@ export function SorobanEventTimeline({
               </tr>
             ) : (
               filtered.map((event) => (
-                <tr key={event.id} className="border-t bg-card/50">
+                <tr
+                  key={event.id}
+                  className="border-t border-border-strong bg-card/50"
+                >
                   <td className="px-4 py-3">
                     <Badge variant={TYPE_BADGE_VARIANT[event.type]}>
                       {event.type}

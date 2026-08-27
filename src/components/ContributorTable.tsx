@@ -13,6 +13,7 @@ import {
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   CONTRIBUTOR_COLUMNS,
@@ -113,9 +114,6 @@ function MobileContributorCard({
   row,
   onRecheck,
   recheckingId,
-  onLoadMore,
-  hasMore = false,
-  isLoadingMore = false,
 }: {
   row: ContributorRow;
   onRecheck?: (id: string) => void;
@@ -186,6 +184,9 @@ export function ContributorTable({
   onExport,
   onRecheck,
   recheckingId,
+  onLoadMore,
+  hasMore = false,
+  isLoadingMore = false,
   className,
 }: ContributorTableProps) {
   const columnPickerId = useId();
@@ -198,6 +199,9 @@ export function ContributorTable({
     () => defaultVisibleColumns()
   );
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  // Which export the confirmation dialog is standing in front of, or null when
+  // it is closed. Both formats share one dialog.
+  const [pendingExport, setPendingExport] = useState<"csv" | "json" | null>(null);
 
   const staleSummary = useMemo(
     () => buildStalenessSummary(contributors),
@@ -321,7 +325,7 @@ export function ContributorTable({
             <Button
               size="sm"
               variant={staleSummary.stale ? "destructive" : "outline"}
-              onClick={onExport}
+              onClick={() => setPendingExport("csv")}
               title={staleSummary.warning}
             >
               <Download className="h-4 w-4" />
@@ -330,7 +334,7 @@ export function ContributorTable({
             <Button
               size="sm"
               variant={staleSummary.stale ? "destructive" : "outline"}
-              onClick={() => exportContributorsJson(contributors, staleSummary.stale)}
+              onClick={() => setPendingExport("json")}
               title={staleSummary.warning}
             >
               <Download className="h-4 w-4" />
@@ -562,6 +566,49 @@ export function ContributorTable({
           </Button>
         </div>
       )}
+
+      {/*
+        A contributor export carries GitHub handles, wallet addresses and
+        balances, so it gets a real confirmation rather than the browser's
+        `window.confirm()`. `force` is passed on confirm because the maintainer
+        has now seen the staleness warning in the dialog — asking twice is how
+        confirmations get click-through-ignored.
+      */}
+      <ConfirmDialog
+        open={pendingExport !== null}
+        title={
+          pendingExport === "json"
+            ? "Export contributor data as JSON?"
+            : "Export contributor data as CSV?"
+        }
+        description={
+          <>
+            This downloads{" "}
+            <strong className="text-foreground">
+              {contributors.length} contributor
+              {contributors.length === 1 ? "" : "s"}
+            </strong>{" "}
+            to your device, including GitHub handles, Stellar addresses and
+            balances. Handle the file as personal data.
+          </>
+        }
+        warning={staleSummary.stale ? staleSummary.warning : undefined}
+        confirmLabel={
+          pendingExport === "json" ? "Download JSON" : "Download CSV"
+        }
+        cancelLabel="Cancel"
+        destructive={staleSummary.stale}
+        onCancel={() => setPendingExport(null)}
+        onConfirm={() => {
+          const format = pendingExport;
+          setPendingExport(null);
+          if (format === "json") {
+            exportContributorsJson(contributors, true);
+          } else {
+            onExport?.();
+          }
+        }}
+      />
     </div>
   );
 }
