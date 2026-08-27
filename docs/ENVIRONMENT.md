@@ -226,6 +226,15 @@ CHECK_CACHE_TTL_MS=1  # 1 ms ≈ no caching
 
 ---
 
+### `TRUSTBRIDGE_ACTION_SECRET`
+
+Shared secret used to verify the authenticity of webhook payloads received from the TrustBridge GitHub Action.
+
+- **Server-only** — never expose to the browser
+- **Used by:** Webhook verification at `POST /api/webhooks/trustbridge-action`
+- **Recommended in production.** If unset, signature verification fails and incoming webhooks are rejected with a 401 status.
+- Generate: `openssl rand -base64 32`
+
 ### `SOROBAN_SECRET_KEY`
 
 Secret key for the Soroban fee-payer account used to sign write-through transactions. Required for the `mirrorRegistrationToSoroban()` function to submit transactions to the Soroban contract.
