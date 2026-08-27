@@ -88,17 +88,21 @@ export default function MetricsPage() {
   const { contributors, audit, config } = data;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <div
+      className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10"
+      data-testid="metrics-page"
+    >
       {/* Header */}
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Admin metrics</h1>
-          <p className="mt-2 text-muted-foreground">
+          <h1 className="text-2xl font-bold sm:text-3xl">Admin metrics</h1>
+          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
             Real-time operational snapshot for the TrustBridge maintainer team.
           </p>
         </div>
         <Button
           variant="outline"
+          className="min-h-11 w-full sm:w-auto"
           onClick={() => metricsQuery.refetch()}
           disabled={metricsQuery.isFetching}
         >
@@ -131,8 +135,8 @@ export default function MetricsPage() {
           {/* Dark mode: -300 heading + -200 sub-label on dark:bg-*-950/40 gives
               ≥ 7:1 contrast against the page background (WCAG AAA).
               Light mode: -700 on white/tinted bg gives ≥ 6.5:1 (WCAG AA). */}
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-4 dark:border-emerald-600 dark:bg-emerald-950/40">
+          <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3 sm:gap-4">
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-4 dark:border-emerald-600 dark:bg-emerald-950/40">
               <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
                 {contributors.byStatus.ready}
               </p>
@@ -140,7 +144,7 @@ export default function MetricsPage() {
                 ✅ Ready
               </p>
             </div>
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-4 dark:border-amber-600 dark:bg-amber-950/40">
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-4 dark:border-amber-600 dark:bg-amber-950/40">
               <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">
                 {contributors.byStatus.low_reserve}
               </p>
@@ -148,7 +152,7 @@ export default function MetricsPage() {
                 ⚠️ Low reserve
               </p>
             </div>
-            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-4 dark:border-red-600 dark:bg-red-950/40">
+            <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-4 dark:border-red-600 dark:bg-red-950/40">
               <p className="text-2xl font-bold text-red-700 dark:text-red-300">
                 {contributors.byStatus.not_ready}
               </p>
@@ -181,11 +185,11 @@ export default function MetricsPage() {
               No audit events recorded yet.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="-mx-1 overflow-x-auto px-1 pb-1">
               {/* `border-border-strong` rather than the default hairline: these
                   row rules are the only thing separating one action count from
                   the next, and the hairline is invisible on the dark page. */}
-              <table className="w-full min-w-[320px] text-sm">
+              <table className="w-full min-w-[280px] text-sm">
                 <caption className="sr-only">
                   Audit log entry counts by action, most frequent first.
                 </caption>
@@ -209,11 +213,11 @@ export default function MetricsPage() {
                       >
                         <th
                           scope="row"
-                          className="py-2 text-left font-mono text-xs font-normal"
+                          className="py-3 text-left font-mono text-xs font-normal sm:py-2"
                         >
                           {action}
                         </th>
-                        <td className="py-2 text-right tabular-nums">{count}</td>
+                        <td className="py-3 text-right tabular-nums sm:py-2">{count}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -289,7 +293,7 @@ function ConfigRow({
   hint: string;
 }) {
   return (
-    <div className="rounded-md border border-border-strong px-3 py-2">
+    <div className="rounded-md border border-border-strong px-3 py-3 sm:py-2">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 font-medium">{value}</dd>
       {/* Full-strength muted foreground: the env-var name is the part a
