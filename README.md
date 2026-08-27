@@ -472,515 +472,360 @@ This project is licensed under the [MIT License](LICENSE).
 - [Setup guide](./docs/SETUP.md)
 - [Stellar Horizon API](https://developers.stellar.org/docs/data/apis/horizon)
 - [Stellar USDC trustlines](https://developers.stellar.org/docs/learn/fundamentals/stellar-data-structures/accounts/trustlines)
-TODO — Maintainer Roles UI: Viewer vs Operator vs Admin With Audit
+Here’s a ~150-line implementation TODO you can drop directly into the issue/PR task:
+
+TODO — GitHub Membership Session Revocation
 
 Complexity: High — 200 points
 
-Objective: Build an admin-only UI and API for managing existing dashboard RBAC roles, with complete auditing and protection against privilege escalation and removal of the final administrator.
+Objective
 
-1. Review Existing RBAC
+Implement immediate access revocation when a GitHub organization member is removed. Existing dashboard JWTs must no longer remain valid until their normal expiry.
 
-[ ] Locate the RBAC implementation from the dependent RBAC issue.
+1. Understand Current Auth Flow
 
-[ ] Read existing role definitions.
+[ ] Inspect src/lib/auth.ts.
 
-[ ] Reuse the existing role model.
+[ ] Identify JWT creation logic.
 
-[ ] Do not introduce a third role system.
+[ ] Identify JWT verification logic.
 
-[ ] Identify viewer.
+[ ] Identify token expiry configuration.
 
-[ ] Identify operator.
+[ ] Identify whether sessions are stateless or database-backed.
 
-[ ] Identify admin.
+[ ] Identify where the authenticated user/org is resolved.
 
-[ ] Identify existing permission checks.
+[ ] Inspect src/app/api/webhooks/github-org-membership/route.ts.
 
-[ ] Identify existing GitHub team-to-role mapping.
+[ ] Document the current membership verification flow.
 
-[ ] Identify how GitHub membership is currently enforced.
+[ ] Find existing auth and webhook tests.
 
-[ ] Identify current authenticated-user helpers.
+[ ] Find existing Prisma user/session models.
 
-[ ] Identify existing admin authorization middleware/helpers.
+[ ] Check whether a session/version field already exists.
 
-[ ] Identify existing Prisma user/member models.
+[ ] Confirm how GitHub organization membership is represented internally.
 
-[ ] Identify existing audit implementation.
 
-[ ] Identify existing CSRF protections.
+2. Define Revocation Strategy
 
-[ ] Review existing settings page structure.
+[ ] Prefer a per-user/session authorization version.
 
-[ ] Review existing API conventions.
+[ ] Add a sessionVersion/authVersion field if required.
 
-[ ] Review existing test patterns.
+[ ] Include the version in newly issued JWTs.
 
+[ ] Compare JWT version against the current user version.
 
-2. Define Role Management Rules
+[ ] Increment the version when membership is revoked.
 
-[ ] Document the meaning of each role.
+[ ] Ensure old JWTs immediately become unauthorized.
 
-[ ] Confirm viewer permissions.
+[ ] Avoid globally invalidating unrelated users.
 
-[ ] Confirm operator permissions.
+[ ] Keep normal JWT expiration as a secondary safety mechanism.
 
-[ ] Confirm admin permissions.
+[ ] Document why version-based revocation was selected.
 
-[ ] Confirm only admins can assign roles.
+[ ] Ensure missing version values fail safely.
 
-[ ] Confirm operators cannot modify roles.
+[ ] Ensure malformed tokens remain rejected.
 
-[ ] Confirm viewers cannot modify roles.
 
-[ ] Confirm users must remain GitHub organization members.
+3. Update auth.ts
 
-[ ] Decide behavior when a GitHub member is removed.
+[ ] Locate JWT signing implementation.
 
-[ ] Ensure role assignment does not bypass GitHub membership.
+[ ] Add authorization/session version to JWT claims.
 
-[ ] Ensure role changes use the existing RBAC model.
+[ ] Keep claims minimal.
 
-[ ] Define whether admins can modify their own role.
+[ ] Do not place sensitive information in the JWT.
 
-[ ] Prevent an admin from accidentally removing the final admin.
+[ ] Update token verification to retrieve current auth state.
 
-[ ] Prevent the final admin from being demoted.
+[ ] Compare token version with current version.
 
-[ ] Prevent the final admin from being deleted through this UI.
+[ ] Reject revoked versions.
 
+[ ] Return the existing unauthorized behavior.
 
-3. Settings UI
+[ ] Avoid leaking revocation details to clients.
 
-[ ] Open src/app/dashboard/settings/page.tsx.
+[ ] Preserve existing expiry validation.
 
-[ ] Add a roles/maintainers section.
+[ ] Preserve existing issuer/audience checks if present.
 
-[ ] Display dashboard users who are eligible for role management.
+[ ] Ensure deleted users cannot authenticate.
 
-[ ] Display username/display name using existing safe fields.
+[ ] Ensure users from another org cannot authenticate.
 
-[ ] Display current role.
+[ ] Ensure old tokens remain invalid after removal.
 
-[ ] Display GitHub membership status where appropriate.
 
-[ ] Display role options using existing RBAC values.
+4. Update GitHub Webhook
 
-[ ] Add role selector.
+[ ] Inspect the member_removed event handler.
 
-[ ] Add explicit save/update action.
+[ ] Verify the GitHub webhook signature.
 
-[ ] Show loading state.
+[ ] Reject invalid webhook signatures.
 
-[ ] Show success state.
+[ ] Validate the webhook secret configuration.
 
-[ ] Show API errors.
+[ ] Validate the GitHub organization.
 
-[ ] Disable controls while saving.
+[ ] Do not trust organization data supplied by the client.
 
-[ ] Prevent unauthorized users from seeing mutation controls.
+[ ] Confirm the event action is actually member_removed.
 
-[ ] Keep UI usable on mobile.
+[ ] Resolve the affected GitHub account.
 
-[ ] Clearly identify admin accounts.
+[ ] Map GitHub account to the internal user.
 
-[ ] Clearly warn before sensitive role changes.
+[ ] Increment that user's authorization/session version.
 
-[ ] Require confirmation for admin promotion/demotion if appropriate.
+[ ] Do not revoke sessions for unrelated users.
 
-[ ] Show last-admin protection errors clearly.
+[ ] Make repeated removal events safe.
 
-[ ] Do not expose secrets or sensitive authentication data.
+[ ] Make the operation idempotent.
 
-[ ] Do not expose unnecessary personal information.
+[ ] Avoid throwing on unknown users.
 
+[ ] Avoid locking out everyone on malformed payloads.
 
-4. Role Assignment API
+[ ] Return appropriate webhook HTTP responses.
 
-[ ] Add/extend an API endpoint under src/app/api/.
+[ ] Avoid logging webhook secrets.
 
-[ ] Require an authenticated user.
+[ ] Avoid logging complete JWTs.
 
-[ ] Require the caller to have admin permissions.
+[ ] Avoid logging unnecessary user information.
 
-[ ] Validate the target user.
 
-[ ] Validate the requested role.
+5. Replay Protection
 
-[ ] Reject unknown roles.
+[ ] Inspect existing webhook replay protection.
 
-[ ] Reject malformed user identifiers.
+[ ] Validate GitHub delivery identifiers where appropriate.
 
-[ ] Verify the target user belongs to the supported GitHub organization.
+[ ] Prevent the same delivery from causing unintended state changes.
 
-[ ] Verify the target user is still an eligible GitHub member.
+[ ] Ensure duplicate member_removed events are harmless.
 
-[ ] Do not trust role information supplied by the browser.
+[ ] Consider storing processed delivery IDs if necessary.
 
-[ ] Do not trust client-side admin checks.
+[ ] Avoid introducing a full session store unless required.
 
-[ ] Perform authorization server-side.
+[ ] Ensure replayed valid events cannot revoke unrelated accounts.
 
-[ ] Perform last-admin validation server-side.
+[ ] Document replay assumptions.
 
-[ ] Make the update atomic where necessary.
 
-[ ] Return a safe success response.
+6. Database / Prisma
 
-[ ] Return 401 for unauthenticated requests.
+[ ] Determine whether Prisma changes are necessary.
 
-[ ] Return 403 for unauthorized requests.
+[ ] Add authVersion if no suitable field exists.
 
-[ ] Return 400 for malformed requests.
+[ ] Give existing users a safe default version.
 
-[ ] Return 404 for unknown targets where appropriate.
+[ ] Create the migration.
 
-[ ] Return a clear conflict/error for last-admin protection.
+[ ] Ensure the field is indexed if required by lookup patterns.
 
-[ ] Avoid leaking internal database information.
+[ ] Keep the migration backwards compatible.
 
+[ ] Verify existing users can still authenticate.
 
-5. Privilege Escalation Protection
+[ ] Verify version increments are atomic.
 
-[ ] Never allow a viewer to assign themselves admin.
+[ ] Avoid race conditions during concurrent webhook processing.
 
-[ ] Never allow an operator to assign themselves admin.
 
-[ ] Never trust a submitted role=admin value.
+7. CSRF / Webhook Security
 
-[ ] Verify caller permissions using server-side RBAC.
+[ ] Confirm webhook endpoint is not relying on browser CSRF protection.
 
-[ ] Verify target identity server-side.
+[ ] Require GitHub signature verification.
 
-[ ] Prevent authorization based solely on GitHub team names from the request.
+[ ] Validate the signature before processing the event.
 
-[ ] Prevent changing another user's role through manipulated IDs.
+[ ] Use constant-time signature comparison where applicable.
 
-[ ] Validate organization membership independently.
+[ ] Reject missing signatures.
 
-[ ] Ensure role changes cannot grant permissions outside the existing RBAC model.
+[ ] Reject malformed signatures.
 
-[ ] Review all mutation paths for equivalent bypasses.
+[ ] Do not process unsigned membership events.
 
-[ ] Ensure API and UI enforce the same policy.
+[ ] Ensure webhook authentication cannot be bypassed through headers/body fields.
 
 
-6. Last Admin Protection
+8. Tests — Webhook
 
-[ ] Determine how administrators are counted.
+[ ] Test valid member_removed.
 
-[ ] Count active admins transactionally.
+[ ] Test invalid webhook signature.
 
-[ ] Reject demotion of the final admin.
+[ ] Test missing webhook signature.
 
-[ ] Reject removal/deactivation of the final admin.
+[ ] Test wrong organization.
 
-[ ] Reject changing the final admin to viewer.
+[ ] Test malformed payload.
 
-[ ] Reject changing the final admin to operator.
+[ ] Test unknown GitHub user.
 
-[ ] Ensure simultaneous requests cannot bypass the protection.
+[ ] Test duplicate removal event.
 
-[ ] Use database transaction/locking strategy where supported.
+[ ] Test unrelated organization.
 
-[ ] Test concurrent admin changes.
+[ ] Test unrelated user remains unaffected.
 
-[ ] Ensure failed last-admin changes do not partially update data.
+[ ] Test successful revocation.
 
-[ ] Return a clear API error.
+[ ] Test webhook secret is never exposed.
 
-[ ] Display the error in the settings UI.
+[ ] Test replay behavior.
 
 
-7. GitHub Membership Enforcement
+9. Tests — Auth
 
-[ ] Preserve the existing GitHub membership requirement.
+[ ] Test newly issued JWT contains auth version.
 
-[ ] Do not allow role assignment to non-members unless explicitly documented.
+[ ] Test valid JWT is accepted.
 
-[ ] Reuse existing GitHub organization membership checks.
+[ ] Test expired JWT is rejected.
 
-[ ] Avoid duplicating membership logic.
+[ ] Test revoked JWT is rejected.
 
-[ ] Handle stale membership data safely.
+[ ] Test new JWT after revocation works.
 
-[ ] Decide behavior when GitHub membership lookup fails.
+[ ] Test another user's JWT remains valid.
 
-[ ] Fail closed for authorization-sensitive operations.
+[ ] Test malformed JWT is rejected.
 
-[ ] Ensure GitHub team mapping remains compatible.
+[ ] Test missing auth version fails safely.
 
-[ ] Document the relationship between GitHub membership and dashboard roles.
+[ ] Test deleted user is rejected.
 
-[ ] Test non-member role assignment.
+[ ] Test wrong organization is rejected.
 
+[ ] Test version mismatch returns unauthorized.
 
-8. Audit Integration
+[ ] Test authorization works after a non-membership event.
 
-[ ] Open src/lib/audit.ts.
 
-[ ] Reuse the existing audit infrastructure.
+10. Documentation
 
-[ ] Do not create a separate audit model.
+[ ] Update docs/ENVIRONMENT.md if webhook/auth variables change.
 
-[ ] Record every successful role change.
+[ ] Document required GitHub webhook secret.
 
-[ ] Record attempted unauthorized role changes where existing audit policy allows.
+[ ] Document supported GitHub organization.
 
-[ ] Record the acting administrator.
+[ ] Document JWT revocation behavior.
 
-[ ] Record the target user.
+[ ] Document auth/session version semantics.
 
-[ ] Record previous role.
+[ ] Add a short threat model.
 
-[ ] Record new role.
+[ ] Document replay protection.
 
-[ ] Record timestamp.
+[ ] Document malformed webhook handling.
 
-[ ] Record relevant request/context identifier if supported.
+[ ] Document operational recovery procedure.
 
-[ ] Avoid recording passwords.
+[ ] Document required test commands.
 
-[ ] Avoid recording JWTs.
 
-[ ] Avoid recording webhook secrets.
+11. Threat Note
 
-[ ] Avoid unnecessary PII.
+[ ] Threat: already-issued JWT remains valid after membership removal.
 
-[ ] Ensure audit entries cannot be modified through the role UI.
+[ ] Mitigation: per-user authorization version revocation.
 
-[ ] Ensure failed role changes do not create misleading success events.
+[ ] Threat: forged webhook removes legitimate users.
 
-[ ] Ensure audit writes happen with the role mutation.
+[ ] Mitigation: GitHub signature verification.
 
-[ ] Ensure audit failure behavior is explicitly defined.
+[ ] Threat: webhook from wrong organization.
 
+[ ] Mitigation: explicit organization validation.
 
-9. CSRF Protection
+[ ] Threat: replayed webhook.
 
-[ ] Review existing CSRF strategy.
+[ ] Mitigation: idempotent processing/replay protection.
 
-[ ] Apply the existing CSRF mechanism to role mutations.
+[ ] Threat: malformed webhook locks out all users.
 
-[ ] Ensure browser requests cannot forge role changes.
+[ ] Mitigation: isolate updates to the resolved user.
 
-[ ] Validate origin/request protection where applicable.
+[ ] Threat: JWT/token leakage through logs.
 
-[ ] Do not rely on UI visibility as CSRF protection.
+[ ] Mitigation: never log complete tokens.
 
-[ ] Test forged mutation requests.
 
-[ ] Test missing CSRF protection.
+12. Validation
 
-[ ] Ensure API clients follow the existing authentication contract.
+[ ] Run npm test -- webhook.
 
-[ ] Avoid introducing a custom CSRF implementation unnecessarily.
+[ ] Run npm test -- auth.
 
+[ ] Run the full test suite if practical.
 
-10. Prisma / Database
+[ ] Run Prisma migration tests if applicable.
 
-[ ] Determine whether the existing RBAC schema supports this feature.
+[ ] Verify existing authentication flows.
 
-[ ] Avoid creating a duplicate role model.
+[ ] Verify member removal manually in development.
 
-[ ] Add schema changes only if required.
+[ ] Confirm the old JWT fails immediately.
 
-[ ] Add migration if necessary.
+[ ] Confirm a newly issued JWT works.
 
-[ ] Ensure existing roles remain valid.
+[ ] Confirm unrelated users remain logged in.
 
-[ ] Add appropriate constraints/indexes if needed.
+[ ] Confirm malformed events do not cause global revocation.
 
-[ ] Use transactions for role + audit operations where appropriate.
+[ ] Confirm webhook secrets are absent from logs.
 
-[ ] Ensure concurrent requests cannot bypass last-admin protection.
 
-[ ] Verify migration against existing development data.
+13. PR Checklist
 
-[ ] Verify rollback/recovery expectations.
+[ ] Revocation implemented.
 
+[ ] JWT/session version validation implemented.
 
-11. API Tests
+[ ] GitHub webhook signature verification implemented.
 
-[ ] Test authenticated admin can list/manage roles.
+[ ] Organization validation implemented.
 
-[ ] Test viewer cannot modify roles.
+[ ] Replay handling implemented.
 
-[ ] Test operator cannot modify roles.
+[ ] Tests added.
 
-[ ] Test unauthenticated request.
+[ ] Existing auth tests still pass.
 
-[ ] Test invalid role.
+[ ] Webhook tests pass.
 
-[ ] Test invalid target user.
-
-[ ] Test unknown target user.
-
-[ ] Test non-member target.
-
-[ ] Test valid viewer assignment.
-
-[ ] Test valid operator assignment.
-
-[ ] Test valid admin assignment.
-
-[ ] Test self-promotion attempt.
-
-[ ] Test unauthorized privilege escalation.
-
-[ ] Test CSRF failure.
-
-[ ] Test last-admin demotion.
-
-[ ] Test last-admin removal.
-
-[ ] Test concurrent last-admin changes.
-
-[ ] Test audit record creation.
-
-[ ] Test failed changes do not produce successful audit entries.
-
-
-12. UI Tests
-
-[ ] Test roles section renders.
-
-[ ] Test current roles are displayed.
-
-[ ] Test admin sees role controls.
-
-[ ] Test viewer does not get mutation controls.
-
-[ ] Test operator does not get mutation controls.
-
-[ ] Test role selector options.
-
-[ ] Test successful update.
-
-[ ] Test API failure.
-
-[ ] Test last-admin error.
-
-[ ] Test non-member error.
-
-[ ] Test loading state.
-
-[ ] Test confirmation flow if implemented.
-
-[ ] Test UI does not claim success when API fails.
-
-[ ] Test updated role appears after successful mutation.
-
-
-13. Security Tests
-
-[ ] Test manipulated target user ID.
-
-[ ] Test manipulated role value.
-
-[ ] Test caller impersonation attempt.
-
-[ ] Test stale admin session.
-
-[ ] Test non-member caller.
-
-[ ] Test non-member target.
-
-[ ] Test forged CSRF request.
-
-[ ] Test cross-user role modification.
-
-[ ] Test privilege escalation.
-
-[ ] Test final-admin protection.
-
-[ ] Test concurrent role mutations.
-
-[ ] Verify audit data cannot leak credentials.
-
-[ ] Verify API errors do not reveal sensitive internals.
-
-
-14. Documentation
-
-[ ] Document viewer, operator, and admin.
-
-[ ] Document who can assign roles.
-
-[ ] Document GitHub organization membership requirement.
-
-[ ] Document GitHub team mapping interaction.
-
-[ ] Document last-admin protection.
-
-[ ] Document audit behavior.
-
-[ ] Document CSRF/security requirements.
-
-[ ] Document any new environment variables.
-
-[ ] Document API endpoints.
-
-[ ] Document compatibility with existing RBAC.
-
-[ ] Document expected behavior when GitHub membership changes.
-
-
-15. Final Validation
-
-[ ] Run npm test.
-
-[ ] Verify RBAC tests pass.
-
-[ ] Verify API tests pass.
-
-[ ] Verify UI tests pass.
-
-[ ] Verify audit tests pass.
-
-[ ] Verify no existing authentication behavior regressed.
-
-[ ] Verify GitHub membership is still required.
-
-[ ] Verify last admin cannot be removed.
-
-[ ] Verify every successful role change is audited.
-
-[ ] Verify unauthorized users cannot mutate roles.
-
-[ ] Verify CSRF protection works.
-
-[ ] Verify no third RBAC model was introduced.
-
-[ ] Review the complete security-sensitive diff.
-
-
-PR Checklist
-
-[ ] Admin role-management UI included.
-
-[ ] Role-management API included.
-
-[ ] Existing RBAC model reused.
-
-[ ] GitHub membership requirement preserved.
-
-[ ] Privilege escalation prevented.
-
-[ ] CSRF protection included.
-
-[ ] Last-admin protection included.
-
-[ ] Every successful change audited.
-
-[ ] Tests included.
-
-[ ] Security regression tests included.
+[ ] Database migration included if required.
 
 [ ] Documentation updated.
 
-[ ] npm test passes.
+[ ] Threat note included.
 
-[ ] No HR functionality added.
+[ ] No unnecessary session-store complexity introduced.
 
-[ ] No duplicate RBAC model introduced.
+[ ] No global user lockout on malformed events.
+
+[ ] No secrets or JWTs logged.
+
+[ ] npm test -- webhook && npm test -- auth passes.
+
+[ ] PR description explains the revocation strategy.
+
+[ ] PR is ready for maintainer review.
