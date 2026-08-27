@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/csv", async () => {
@@ -11,6 +12,10 @@ vi.mock("@/lib/csv", async () => {
     ...actual,
     buildCsvFilename: vi.fn(() => "trustbridge-wave-2026-07-26.csv"),
     downloadCsv: vi.fn(),
+    // jsdom has no URL.createObjectURL, and the JSON export path now runs for
+    // real once the confirmation dialog is accepted.
+    buildJsonFilename: vi.fn(() => "trustbridge-wave-2026-07-26.json"),
+    downloadJson: vi.fn(),
   };
 });
 
@@ -81,5 +86,124 @@ describe("ContributorTable", () => {
     expect(vi.mocked(downloadCsv).mock.calls[0][1]).toContain(
       "Required USDC trustline is missing."
     );
+  });
+
+  // ── Export confirmation (issue #155) ────────────────────────────────────
+
+  describe("export confirmation dialog", () => {
+    /** `bob` was checked long enough ago to be stale in every test run. */
+    const staleContributors: ContributorRow[] = [
+      contributors[0],
+      { ...contributors[1], lastCheckedAt: null },
+    ];
+
+    it("does not export until the confirmation is accepted", async () => {
+      const user = userEvent.setup();
+      const onExport = vi.fn();
+      render(
+        <ContributorTable contributors={contributors} onExport={onExport} />
+      );
+
+      await user.click(screen.getByRole("button", { name: /Export CSV/i }));
+
+      expect(onExport).not.toHaveBeenCalled();
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /Download CSV/i }));
+      expect(onExport).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not export when the confirmation is cancelled", async () => {
+      const user = userEvent.setup();
+      const onExport = vi.fn();
+      render(
+        <ContributorTable contributors={contributors} onExport={onExport} />
+      );
+
+      await user.click(screen.getByRole("button", { name: /Export CSV/i }));
+      await user.keyboard("{Escape}");
+
+      expect(onExport).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+
+    it("returns focus to the export button after cancelling", async () => {
+      const user = userEvent.setup();
+      render(
+        <ContributorTable contributors={contributors} onExport={vi.fn()} />
+      );
+
+      const exportButton = screen.getByRole("button", { name: /Export CSV/i });
+      await user.click(exportButton);
+      await user.keyboard("{Escape}");
+
+      expect(exportButton).toHaveFocus();
+    });
+
+    it("names the row count and the PII in the confirmation", async () => {
+      const user = userEvent.setup();
+      render(
+        <ContributorTable contributors={contributors} onExport={vi.fn()} />
+      );
+
+      await user.click(screen.getByRole("button", { name: /Export CSV/i }));
+
+      const dialog = screen.getByRole("alertdialog");
+      expect(dialog).toHaveTextContent(/2 contributors/i);
+      expect(dialog).toHaveTextContent(/personal data/i);
+    });
+
+    it("carries the stale-data warning into the dialog", async () => {
+      const user = userEvent.setup();
+      render(
+        <ContributorTable contributors={staleContributors} onExport={vi.fn()} />
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: /Export CSV \(stale\)/i })
+      );
+
+      const dialog = screen.getByRole("alertdialog");
+      expect(dialog).toHaveTextContent(/have not been verified/i);
+      expect(dialog).toHaveTextContent(/may cause payout failures/i);
+    });
+
+    it("does not re-prompt with window.confirm once the dialog was accepted", async () => {
+      // The dialog already showed the staleness warning, so the export runs
+      // forced — a second native prompt is exactly the friction that gets
+      // confirmations clicked through without reading.
+      const user = userEvent.setup();
+      const confirmSpy = vi
+        .spyOn(window, "confirm")
+        .mockReturnValue(true);
+
+      render(
+        <ContributorTable contributors={staleContributors} onExport={vi.fn()} />
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: /Export JSON \(stale\)/i })
+      );
+      await user.click(screen.getByRole("button", { name: /Download JSON/i }));
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      confirmSpy.mockRestore();
+    });
+
+    it("confirms the JSON export separately from the CSV export", async () => {
+      const user = userEvent.setup();
+      render(
+        <ContributorTable contributors={contributors} onExport={vi.fn()} />
+      );
+
+      await user.click(screen.getByRole("button", { name: /Export JSON/i }));
+
+      expect(
+        screen.getByRole("button", { name: /Download JSON/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Download CSV/i })
+      ).not.toBeInTheDocument();
+    });
   });
 });

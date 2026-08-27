@@ -78,9 +78,12 @@ export function RegisterClient() {
     buildWalletProofInfo(proofAddress, session?.user?.githubUsername ?? null);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6" data-testid="register-page">
       {maintainerError && (
-        <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/40 dark:bg-amber-950/40 dark:text-amber-200">
+        <div
+          className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/40 dark:bg-amber-950/40 dark:text-amber-200"
+          data-testid="maintainer-error"
+        >
           Maintainer dashboard requires membership in the configured GitHub
           organization. You can still register your Stellar address here.
         </div>
@@ -100,13 +103,19 @@ export function RegisterClient() {
       <div className="grid gap-8 lg:grid-cols-5">
         <div className="lg:col-span-3 space-y-6">
           {existingAddress && (
-            <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <Card
+              className="border-emerald-500/30 bg-emerald-500/5"
+              data-testid="current-registration"
+            >
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                   Current registration
                 </CardTitle>
-                <CardDescription className="font-mono text-xs break-all">
+                <CardDescription
+                  className="font-mono text-xs break-all"
+                  data-testid="current-registration-address"
+                >
                   {existingAddress}
                 </CardDescription>
               </CardHeader>
@@ -114,6 +123,7 @@ export function RegisterClient() {
                 <CardContent>
                   <TrustlineStatusBadge
                     status={existingQuery.data.registration.readiness}
+                    showDescription
                   />
                 </CardContent>
               )}
@@ -126,9 +136,9 @@ export function RegisterClient() {
                 {existingAddress ? "Update Stellar address" : "Stellar address"}
               </CardTitle>
               <CardDescription>
-                Enter your public key (starts with G). Validation runs as you
-                type via Horizon, and the proof panel shows the exact Freighter
-                challenge maintainers can ask you to sign.
+                Paste the wallet address you want to be paid to. We check it as
+                you type and tell you what — if anything — is still missing. You
+                can save it now and finish the wallet setup afterwards.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -139,7 +149,12 @@ export function RegisterClient() {
               />
 
               {saveMutation.isError && (
-                <p className="text-sm text-destructive" aria-live="polite">
+                <p
+                  className="text-sm text-destructive"
+                  aria-live="polite"
+                  role="alert"
+                  data-testid="registration-error"
+                >
                   {(saveMutation.error as Error).message}
                 </p>
               )}
@@ -148,6 +163,7 @@ export function RegisterClient() {
                 <p
                   className="text-sm text-emerald-600 dark:text-emerald-400"
                   aria-live="polite"
+                  data-testid="registration-saved"
                 >
                   Registration saved successfully.
                 </p>
@@ -157,6 +173,7 @@ export function RegisterClient() {
                 variant="stellar"
                 disabled={!address.trim() || saveMutation.isPending}
                 onClick={() => saveMutation.mutate(address.trim())}
+                data-testid="save-registration"
               >
                 {saveMutation.isPending ? (
                   <>
