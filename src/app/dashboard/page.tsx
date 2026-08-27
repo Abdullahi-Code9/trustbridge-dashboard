@@ -25,16 +25,12 @@ import {
   flattenContributorPages,
   useInfiniteContributors,
 } from "@/lib/use-infinite-contributors";
+import { useJobProgress } from "@/lib/use-job-progress";
 import type {
   ContributorRow,
   NetworkConfig,
   SorobanEventTimelineResponse,
 } from "@/types";
-
-interface RecheckResponse {
-  contributors: ContributorRow[];
-  refreshed: number;
-}
 
 interface BatchRecheckResponse {
   jobId: string;
@@ -45,14 +41,16 @@ interface BatchRecheckResponse {
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const contributorsQuery = useInfiniteContributors();
+  const { event, isStreaming, startProgress } = useJobProgress();
 
   const recheckMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/contributors", { method: "POST" });
       if (!response.ok) throw new Error("Re-check failed");
-      return (await response.json()) as RecheckResponse;
+      return (await response.json()) as BatchRecheckResponse;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      startProgress(data.jobId);
       void queryClient.invalidateQueries({ queryKey: ["contributors"] });
     },
   });
