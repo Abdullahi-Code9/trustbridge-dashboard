@@ -7,6 +7,7 @@ import { useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 import { AddressInput } from "@/components/AddressInput";
+import { AddressQr } from "@/components/AddressQr";
 import { FreighterProofCard } from "@/components/FreighterProofCard";
 import { OutreachTemplateGenerator } from "@/components/OutreachTemplateGenerator";
 import { TrustlineGuidancePanel } from "@/components/TrustlineGuidancePanel";
@@ -19,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { isValidGAddress } from "@/lib/stellar-address";
 import { buildWalletProofInfo } from "@/lib/registration-insights";
 import type { HorizonDebugInfo, WalletProofInfo } from "@/types";
 
@@ -119,14 +121,23 @@ export function RegisterClient() {
                   {existingAddress}
                 </CardDescription>
               </CardHeader>
-              {existingQuery.data?.registration?.readiness && (
-                <CardContent>
+              <CardContent className="space-y-4">
+                {existingQuery.data?.registration?.readiness && (
                   <TrustlineStatusBadge
                     status={existingQuery.data.registration.readiness}
                     showDescription
                   />
-                </CardContent>
-              )}
+                )}
+                {isValidGAddress(existingAddress) && (
+                  <div data-testid="current-registration-qr">
+                    <p className="mb-2 text-sm text-muted-foreground">
+                      Scan to confirm the registered payout address on another
+                      device.
+                    </p>
+                    <AddressQr address={existingAddress} />
+                  </div>
+                )}
+              </CardContent>
             </Card>
           )}
 
