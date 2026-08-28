@@ -1,7 +1,3 @@
-import Link from "next/link";
-import { ExternalLink } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,10 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  LOBSTR_TRUSTLINE_URL,
-  STELLAR_LAB_TRUSTLINE_URL,
-} from "@/lib/constants";
+import { WalletInstallStepper } from "@/components/WalletInstallStepper";
 
 /**
  * Contributor-facing setup guide.
@@ -21,6 +14,10 @@ import {
  * only makes sense inside Stellar ("trustline", "reserve", "G-address") is
  * introduced with what it actually does. Field-level Horizon detail stays in
  * the maintainer "Horizon debug" panel — see `docs/READINESS_MODEL.md`.
+ *
+ * The embedded `WalletInstallStepper` lets the contributor pick one of three
+ * supported wallets (Freighter, LOBSTR, xBull) and follow a step-by-step guide
+ * that ends with a deep link directly into that wallet's trustline-add flow.
  */
 export function TrustlineGuidancePanel() {
   return (
@@ -33,80 +30,55 @@ export function TrustlineGuidancePanel() {
           New to Stellar? Set your wallet up first
         </CardTitle>
         <CardDescription>
-          Payouts are sent as USDC on the Stellar network. A Stellar wallet has
-          to be switched on for USDC before it can receive any — these four
-          steps do that. It usually takes about ten minutes.
+          Payouts arrive as USDC on the Stellar network. Before a wallet can
+          receive USDC it needs two things: a small XLM deposit to exist on the
+          network, and a <em>trustline</em> — a one-time opt-in that tells
+          Stellar the wallet accepts USDC. Pick a wallet below and follow the
+          four steps. It usually takes about ten minutes.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 text-sm">
-        <ol className="list-decimal space-y-3 pl-5">
+
+      <CardContent className="space-y-5 text-sm">
+        {/* Overview checklist — orient the contributor before they dive in */}
+        <ol className="list-decimal space-y-1.5 pl-5 text-muted-foreground marker:text-foreground">
           <li>
-            <span className="font-medium">Put some XLM in your wallet.</span>{" "}
-            XLM is Stellar&apos;s own coin. A wallet does not really exist until
-            it holds a little of it, so send at least 1 XLM to your address
-            before anything else.
-          </li>
-          <li>
-            <span className="font-medium">Turn on USDC for that wallet.</span>{" "}
-            Stellar wallets opt in to each kind of token one at a time — the
-            official name for that opt-in is a{" "}
-            <em>trustline</em>. You can do it in{" "}
-            <a
-              href={LOBSTR_TRUSTLINE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-stellar-cyan hover:underline"
-            >
-              Lobstr <ExternalLink className="h-3 w-3" />
-            </a>{" "}
-            (a wallet app, easiest) or the{" "}
-            <a
-              href={STELLAR_LAB_TRUSTLINE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-stellar-cyan hover:underline"
-            >
-              Stellar Laboratory <ExternalLink className="h-3 w-3" />
-            </a>{" "}
-            (a developer tool).
-          </li>
-          <li>
-            <span className="font-medium">
-              Paste your public address below.
+            <span className="font-medium text-foreground">
+              Choose a wallet
             </span>{" "}
-            That is the one starting with a capital <code>G</code> — it is safe
-            to share, unlike your secret key, which starts with{" "}
-            <code>S</code> and should never be pasted anywhere. We check the
-            wallet as you type and tell you what is still missing.
+            — pick whichever tab suits you: Freighter (browser extension),
+            LOBSTR (mobile + extension), or xBull (extension + PWA).
           </li>
           <li>
-            <span className="font-medium">
-              Copy the ownership proof if asked.
+            <span className="font-medium text-foreground">
+              Install and fund it
             </span>{" "}
-            The panel above shows a short piece of text. If a maintainer asks
-            you to prove the wallet is yours, sign that text in your wallet and
-            send it back.
+            — follow the steps in the panel; send at least 1 XLM to activate
+            the address.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">
+              Add the USDC trustline
+            </span>{" "}
+            — click the deep-link button at the bottom of the step list. It
+            opens the wallet with USDC pre-selected so you only need to confirm.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">
+              Paste your G-address below
+            </span>{" "}
+            — the address starting with a capital <code>G</code>. Never share
+            the secret key (starts with <code>S</code>).
           </li>
         </ol>
 
-        <p className="text-muted-foreground">
-          Save your address as soon as it is entered — you do not have to wait
-          for the badge to turn green. Re-run the check any time after you
-          finish the setup.
-        </p>
+        {/* Wallet picker + per-wallet guides */}
+        <WalletInstallStepper />
 
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={LOBSTR_TRUSTLINE_URL} target="_blank" rel="noreferrer">
-              Turn on USDC in Lobstr
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href={STELLAR_LAB_TRUSTLINE_URL} target="_blank" rel="noreferrer">
-              Use Stellar Laboratory
-            </Link>
-          </Button>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          You can save your address as soon as you have it — you do not need to
+          wait for the badge to turn green. Re-run the check any time after
+          finishing the trustline setup.
+        </p>
       </CardContent>
     </Card>
   );
