@@ -60,6 +60,76 @@ describe("ContributorTable", () => {
     vi.clearAllMocks();
   });
 
+  describe("empty states", () => {
+    it("shows a loading state instead of an empty state while data is loading", () => {
+      render(<ContributorTable contributors={[]} isLoading />);
+
+      expect(screen.getByTestId("contributors-loading")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("contributors-zero-empty")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows a zero-contributors empty state with maintainer next actions", () => {
+      render(<ContributorTable contributors={[]} viewerRole="maintainer" />);
+
+      const emptyState = screen.getByTestId("contributors-zero-empty");
+      expect(emptyState).toHaveTextContent(/No contributors registered yet/i);
+      expect(emptyState).toHaveTextContent(/Share the registration link/i);
+      expect(
+        screen.getByRole("link", { name: /Open register page/i })
+      ).toHaveAttribute("href", "/register");
+      expect(
+        screen.getByRole("button", { name: /Copy register link/i })
+      ).toBeInTheDocument();
+    });
+
+    it("shows contributor-specific copy in the zero-contributors empty state", () => {
+      render(<ContributorTable contributors={[]} viewerRole="contributor" />);
+
+      const emptyState = screen.getByTestId("contributors-zero-empty");
+      expect(emptyState).toHaveTextContent(/You are not registered yet/i);
+      expect(emptyState).toHaveTextContent(/Register your Stellar payout address/i);
+      expect(
+        screen.getByRole("link", { name: /Register now/i })
+      ).toHaveAttribute("href", "/register");
+      expect(
+        screen.queryByRole("button", { name: /Copy register link/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("distinguishes search-empty from zero-contributors empty", async () => {
+      const user = userEvent.setup();
+      render(<ContributorTable contributors={contributors} />);
+
+      const searchInput = screen.getByLabelText(
+        /Search contributors by GitHub username or Stellar address/i
+      );
+      await user.type(searchInput, "zzz_no_match");
+
+      expect(screen.getAllByTestId("contributors-filtered-empty")[0]).toHaveTextContent(
+        /No contributors match "zzz_no_match"/i
+      );
+      expect(
+        screen.queryByTestId("contributors-zero-empty")
+      ).not.toBeInTheDocument();
+    });
+
+    it("distinguishes filter-empty from zero-contributors empty", async () => {
+      const user = userEvent.setup();
+      render(<ContributorTable contributors={contributors} />);
+
+      await user.click(screen.getByRole("button", { name: /^Low reserve$/i }));
+
+      expect(screen.getAllByTestId("contributors-filtered-empty")[0]).toHaveTextContent(
+        /No contributors match this filter/i
+      );
+      expect(
+        screen.queryByTestId("contributors-zero-empty")
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("renders accessible table controls and row diagnostics", () => {
     render(<ContributorTable contributors={contributors} />);
 
