@@ -43,7 +43,9 @@ model Registration {
   id                  String        @id @default(cuid())
   userId              String        @unique
   user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stellarAddress      String        @unique
+  /// Unique among active registrations; the partial index is defined in the migration.
+  stellarAddress      String
+  deletedAt           DateTime?
   trustlineReady      Boolean       @default(false)
   trustlineAuthorized Boolean       @default(false)
   funded              Boolean       @default(false)
@@ -58,6 +60,7 @@ model Registration {
 
   @@index([trustlineReady])
   @@index([lastCheckedAt])
+  @@index([deletedAt])
 }
 
 enum DisputeStatus {
