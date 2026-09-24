@@ -8,6 +8,7 @@
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System design, data flow, auth |
 | [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) | Directory layout |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Vercel / production deploy |
+| [MAINTAINER_WORKFLOW.md](./MAINTAINER_WORKFLOW.md) | Maintainer workflow & `trustbridge-dash` CLI |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Contribution guide |
 | [CSRF.md](./CSRF.md) | CSRF threat model and route policy |
 | [SENTRY.md](./SENTRY.md) | Error tracking setup |

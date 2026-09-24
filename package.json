@@ -2,6 +2,9 @@
   "name": "trustbridge-dashboard",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "trustbridge-dash": "./scripts/cli/index.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "npm run prisma:generate && node scripts/next-build.mjs",
