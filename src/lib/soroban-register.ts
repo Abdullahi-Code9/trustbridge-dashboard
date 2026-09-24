@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Registration } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { rpc, Keypair, TransactionBuilder, Networks, Contract, Address, nativeToScVal } from "stellar-sdk";
 
 /**
@@ -138,9 +139,14 @@ export async function mirrorRegistrationToSoroban(
 /**
  * Enqueue a registration write-through task into the Soroban outbox table.
  * Designed to be executed inside a Prisma $transaction alongside registration creation.
+ *
+ * @param db - Prisma transaction client (passed from a $transaction context)
+ * @param action - Action type (e.g., 'register')
+ * @param payload - Payload containing stellarAddress, githubUsername, registrationId
+ * @param maintainerOrgId - Organization ID for the maintainer context
  */
 export async function enqueueSorobanOutbox(
-  db: any,
+  db: Prisma.TransactionClient,
   action: string,
   payload: { stellarAddress: string; githubUsername: string; registrationId: string },
   maintainerOrgId = "default"

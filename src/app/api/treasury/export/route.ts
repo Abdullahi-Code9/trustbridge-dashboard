@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 import { authOptions } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { computeReadiness } from "@/lib/readiness";
 import { recordAuditLog } from "@/lib/audit";
@@ -106,6 +107,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id || !session.user.isMaintainer) {
