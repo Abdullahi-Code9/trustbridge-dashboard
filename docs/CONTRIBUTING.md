@@ -39,9 +39,30 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
    npm run typecheck  # TypeScript type checking
    npm run test       # Vitest
    npm run build      # Next.js build
+   npm run storybook  # Run local Storybook at http://localhost:6006
    ```
 
    All of these run in CI and must pass before merging.
+
+---
+
+## Storybook & Component Development
+
+TrustBridge Dashboard uses Storybook to develop and visually test UI components in isolation without needing live Horizon network access or database sessions.
+
+### Running Storybook
+```bash
+# Start local Storybook development server
+npm run storybook
+
+# Build static Storybook bundle
+npm run build-storybook
+```
+
+### Component Guidelines for Stories
+- **Pure Mock Data**: Stories must use static mock data only. Do not invoke Prisma or make requests to Stellar Horizon from within stories.
+- **Key States**: Include stories for empty states, populated/ready states, loading states, and mobile viewports (`parameters: { viewport: { defaultViewport: "mobile1" } }`).
+- **No Secrets**: Never hardcode production API keys, secrets, or real private keys in Storybook files.
 
 ---
 
