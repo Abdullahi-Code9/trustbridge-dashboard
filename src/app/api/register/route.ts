@@ -19,6 +19,10 @@ import { recordInitialAddress, recordAddressChange } from "@/lib/address-history
 import { enforceFreezeWindowGuard } from "@/lib/freeze-window";
 import { evaluateAndAuditAddressChangeAnomaly } from "@/lib/address-anomaly";
 import { isUserBanned } from "@/lib/ban-service";
+import {
+  trackServerRegistrationCreated,
+  trackServerRegistrationUpdated,
+} from "@/lib/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -273,6 +277,20 @@ export async function POST(request: NextRequest) {
       targetLabel: registration.stellarAddress,
       metadata: { readiness: horizonResult.readiness },
     });
+
+    // Track analytics event (fire-and-forget, no-op when key is absent)
+    if (activeUserRegistration) {
+      trackServerRegistrationUpdated({
+        userId: session.user.id,
+        stellarAddress: registration.stellarAddress,
+        fieldsChanged: isAddressChange ? ["stellarAddress"] : [],
+      });
+    } else {
+      trackServerRegistrationCreated({
+        userId: session.user.id,
+        stellarAddress: registration.stellarAddress,
+      });
+    }
 
     return NextResponse.json({
       success: true,

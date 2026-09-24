@@ -17,6 +17,7 @@ import { useTheme } from "next-themes";
 import { GitHubIcon } from "@/components/icons/GitHubIcon";
 import { NotificationBell } from "@/components/NotificationBell";
 import { SignInButton } from "@/components/SignInButton";
+import { useI18n } from "@/lib/i18n-context";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -40,7 +41,53 @@ const FOCUSABLE_SELECTOR = [
 const navLinkClass =
   "text-muted-foreground transition-colors hover:text-foreground";
 
-export function Header() {
+/** Minimal locale switcher — cycles through supported locales. */
+const LOCALES = ["en", "es", "pt"] as const;
+type Locale = (typeof LOCALES)[number];
+const LOCALE_LABELS: Record<Locale, string> = { en: "EN", es: "ES", pt: "PT" };
+
+function LocaleSwitcher() {
+  const { locale, setLocale } = useI18n();
+
+  const cycleLocale = React.useCallback(() => {
+    const idx = LOCALES.indexOf(locale as Locale);
+    const next = LOCALES[(idx + 1) % LOCALES.length];
+    setLocale(next);
+  }, [locale, setLocale]);
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      aria-label={`Switch language, current: ${LOCALE_LABELS[locale as Locale] ?? locale}`}
+      onClick={cycleLocale}
+      className="hidden w-10 px-0 text-xs font-semibold sm:inline-flex"
+    >
+      {LOCALE_LABELS[locale as Locale] ?? locale.toUpperCase()}
+    </Button>
+  );
+}
+
+function LocaleSwitcherMobile() {
+  const { locale, setLocale } = useI18n();
+
+  return (
+    <div className="flex gap-1">
+      {LOCALES.map((l) => (
+        <Button
+          key={l}
+          variant={locale === l ? "stellar" : "outline"}
+          size="sm"
+          className="flex-1 text-xs font-semibold"
+          aria-pressed={locale === l}
+          onClick={() => setLocale(l)}
+        >
+          {LOCALE_LABELS[l]}
+        </Button>
+      ))}
+    </div>
+  );
+}export function Header() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -181,6 +228,8 @@ export function Header() {
               <Menu className="h-5 w-5" aria-hidden="true" />
             )}
           </Button>
+
+          <LocaleSwitcher />
 
           <Button
             variant="ghost"
@@ -366,6 +415,8 @@ export function Header() {
                   <Moon className="mr-2 hidden h-4 w-4 dark:block" aria-hidden="true" />
                   Toggle theme
                 </Button>
+
+                <LocaleSwitcherMobile />
 
                 {session ? (
                   <Button
