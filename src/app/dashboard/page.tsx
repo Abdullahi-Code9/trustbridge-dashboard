@@ -25,6 +25,7 @@ import {
   StaleDataBanner,
   buildStalenessSummaryClient,
 } from "@/components/StaleDataBanner";
+import { FreezeWindowBanner } from "@/components/FreezeWindowBanner";
 import { countReadyContributors } from "@/lib/contributors";
 import { useJobProgress } from "@/lib/use-job-progress";
 import {
@@ -171,6 +172,23 @@ export default function DashboardPage() {
     },
   });
 
+  const freezeQuery = useQuery({
+    queryKey: ["freeze-status"],
+    queryFn: async () => {
+      const response = await fetch("/api/freeze-status");
+      if (!response.ok) return { active: false };
+      return (await response.json()) as {
+        active: boolean;
+        reason?: string | null;
+        start?: string | null;
+        end?: string | null;
+      };
+    },
+    // Re-check every 30 s so the banner disappears automatically once the
+    // window expires without requiring a manual page refresh.
+    refetchInterval: 30_000,
+  });
+
   const contributors = flattenContributorPages(contributorsQuery.data);
   const readyCount = countReadyContributors(contributors);
   const staleness = buildStalenessSummaryClient(contributors);
@@ -253,6 +271,14 @@ export default function DashboardPage() {
             isRecheckRunning={isRecheckRunning}
           />
         )}
+
+      {freezeQuery.data?.active && (
+        <FreezeWindowBanner
+          reason={freezeQuery.data.reason ?? undefined}
+          start={freezeQuery.data.start ?? undefined}
+          end={freezeQuery.data.end ?? undefined}
+        />
+      )}
 
       {event?.type === "completed" && (
         <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
