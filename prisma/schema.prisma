@@ -23,6 +23,7 @@ model User {
   auditLogs       TokenAuditLog[]
   addressHistory  AddressHistoryRecord[]
   invites         Invite[]
+  notifications   Notification[]
   banned          Boolean       @default(false)
   bannedAt        DateTime?
   banReason       String?
