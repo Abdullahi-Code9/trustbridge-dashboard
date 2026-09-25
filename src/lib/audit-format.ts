@@ -19,6 +19,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "api_key.created": "Created an API key",
   "api_key.revoked": "Revoked an API key",
   "api_key.use_rejected": "API key use rejected",
+  "digest.cron": "Scheduled contributor readiness digest sent",
+  "digest.cron.failed": "Scheduled contributor readiness digest failed",
 };
 
 export function describeAuditAction(action: string): string {

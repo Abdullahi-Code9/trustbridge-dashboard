@@ -409,7 +409,95 @@ Currently the per-IP rate limit for API key–authenticated export requests is h
 
 ---
 
-## Security checklist
+## Digest emails (daily/weekly not-ready contributor digest)
+
+The digest cron job emails maintainers a readiness summary on a schedule —
+counts of ready / low-reserve / not-ready contributors plus a direct link to
+the dashboard. No contributor PII (usernames, addresses) is sent by default;
+the full list is opt-in.
+
+### `DIGEST_EMAIL`
+
+Destination email address for digest emails.
+
+- **Optional.** Falls back to `TREASURY_EXPORT_EMAIL`, then `CRON_EXPORT_EMAIL`
+  when unset, so teams with a single ops address only need to set one variable.
+- When all three are unset the digest still runs and writes an audit log entry,
+  but no email is sent.
+
+### `DIGEST_CADENCE`
+
+Controls the label in the digest subject line (`Daily` or `Weekly`). Does not
+affect when the cron fires — that is controlled by your Vercel Cron schedule or
+equivalent. Default: `daily`.
+
+| Value | Subject prefix |
+|-------|---------------|
+| `daily` (default) | `[TrustBridge] Daily Not-Ready Contributor Digest` |
+| `weekly` | `[TrustBridge] Weekly Not-Ready Contributor Digest` |
+
+### `DIGEST_INCLUDE_FULL_LIST`
+
+Privacy control. When unset (the default) the digest body contains only
+aggregate counts and a dashboard link — no contributor usernames or reasons.
+
+Set to `true` / `1` / `yes` to include a per-contributor table of GitHub
+usernames and block reasons in the email body.
+
+> **Privacy note:** the full list contains GitHub usernames (not emails or
+> Stellar addresses). Restrict access to the destination mailbox accordingly,
+> and review your data-handling obligations before enabling this.
+
+| Value | Behaviour |
+|-------|-----------|
+| unset / `false` / `0` | Counts + link only (default) |
+| `true` / `1` / `yes` | Usernames + reasons included |
+
+### `DIGEST_CRON_MIN_INTERVAL_MS`
+
+Minimum milliseconds between digest runs. Prevents a misconfigured cron
+schedule from spamming the inbox. Default: `3600000` (1 hour).
+
+```bash
+DIGEST_CRON_MIN_INTERVAL_MS=3600000   # 1 hour (default)
+DIGEST_CRON_MIN_INTERVAL_MS=86400000  # 24 hours
+```
+
+**Multi-instance note:** like the export rate gate, this is in-process state.
+Each Vercel instance has its own counter. In practice this is fine — a
+misconfigured per-minute schedule fires once per instance per hour, not
+unboundedly.
+
+### Vercel Cron configuration
+
+Add entries to `vercel.json` to trigger the digest automatically:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/digest",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}
+```
+
+This fires at 08:00 UTC daily. For weekly, use `"0 8 * * 1"` (Monday 08:00 UTC)
+and set `DIGEST_CADENCE=weekly`. Vercel Cron sends `Authorization: Bearer $CRON_SECRET`
+automatically when `CRON_SECRET` is set in the project environment variables.
+
+### Digest audit trail
+
+Every digest run writes a `digest.cron` entry to `AuditLog` (visible in
+`/dashboard/settings → Recent activity`):
+
+| `action` | When |
+|---|---|
+| `digest.cron` | Run completed (including no-destination runs). `metadata` includes `cadence`, `totalContributors`, `readyCount`, `notReadyCount`, `lowReserveCount`, `emailSent`, `destination`. |
+| `digest.cron.failed` | DB or unexpected error. `metadata.error` contains the message. |
+
+---
 
 - [ ] Never commit `.env.local` or secrets
 - [ ] Rotate `GITHUB_CLIENT_SECRET` if exposed
@@ -425,6 +513,7 @@ Currently the per-IP rate limit for API key–authenticated export requests is h
 - [Feature flags](./FEATURE_FLAGS.md)
 - [Architecture](./ARCHITECTURE.md)
 - [API keys](./API_KEYS.md)
+- [Digest emails](./DIGEST.md)
 
 - // src/lib/notifications/webhook.ts
 
