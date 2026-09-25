@@ -14,6 +14,43 @@ export interface PaginatedContributorsPage {
 const ITEMS_PER_PAGE = 25;
 
 /**
+ * Fetches every contributor in one shot (limit=1000) for panels that need the
+ * full list — WaveReadinessBar, WavePrepWorkspace, DisputePanel.
+ *
+ * Uses the same query-key prefix ("contributors") as usePaginatedContributors
+ * so invalidateQueries({ queryKey: ["contributors"] }) refreshes both.
+ *
+ * Part of the #307 fix: replaces useInfiniteContributors which was causing a
+ * duplicate /api/contributors/paginated request on every dashboard mount.
+ */
+export function useAllContributors() {
+  const query = useQuery<PaginatedContributorsPage>({
+    queryKey: ["contributors", "all"],
+    queryFn: async () => {
+      const response = await fetch("/api/contributors/paginated?limit=1000");
+      if (!response.ok) throw new Error("Failed to load contributors");
+      return (await response.json()) as PaginatedContributorsPage;
+    },
+    staleTime: 30_000,
+  });
+
+  return {
+    contributors: query.data?.contributors ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+  };
+}
+
+export interface PaginatedContributorsPage {
+  contributors: ContributorRow[];
+  total: number;
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+const ITEMS_PER_PAGE = 25;
+
+/**
  * Page-by-page cursor navigation for the maintainer dashboard.
  *
  * Unlike `useInfiniteContributors` (which accumulates all pages into one flat
