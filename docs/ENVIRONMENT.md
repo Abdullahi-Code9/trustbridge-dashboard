@@ -297,6 +297,90 @@ For preview deployments, set `NEXTAUTH_URL` to the preview URL or use Vercel's a
 
 ---
 
+## Rate limiting
+
+### `RATE_LIMIT_WINDOW_MS`
+
+Sliding-window duration in milliseconds for the `POST /api/check` per-IP rate
+limiter.
+
+| Value | Behaviour |
+|-------|-----------|
+| Unset / invalid | Falls back to **60 000 ms (1 minute)** |
+| Any positive integer | Window resets after this many ms |
+
+### `RATE_LIMIT_MAX_REQUESTS`
+
+Maximum number of requests a single IP may make within one `RATE_LIMIT_WINDOW_MS`
+window.
+
+| Value | Behaviour |
+|-------|-----------|
+| Unset / invalid | Falls back to **10 requests per window** |
+| Any positive integer | Requests beyond this threshold receive `429 Too Many Requests` with a `Retry-After` header |
+
+### ⚠️ Process-local caveat (important for multi-instance deployments)
+
+The rate-limit store (`store` in `src/lib/rate-limit.ts`) is a plain in-process
+`Map`. **It is not shared across Node.js processes, server instances, or
+serverless function invocations.** This means:
+
+- On a horizontally scaled deployment (e.g. multiple Vercel Edge or Lambda
+  containers, a PM2 cluster, or a Kubernetes replica set) each instance
+  enforces limits independently.
+- A client that lands on a different instance for each request effectively gets
+  `RATE_LIMIT_MAX_REQUESTS × <instance count>` requests before any single
+  process throttles it.
+- Serverless cold-starts reset the in-process state — a burst of cold invocations
+  each start with a clean counter.
+
+The limit therefore provides a **best-effort, single-process guardrail** rather
+than a hard cluster-wide cap.
+
+#### Recommended mitigations
+
+Choose the approach that best fits your deployment topology:
+
+| Approach | When to use | Notes |
+|----------|-------------|-------|
+| **Edge / CDN rate limiting** | All multi-instance deployments | Vercel WAF, Cloudflare Rate Limiting, or AWS WAF can enforce a true global cap in front of the origin. This is the recommended first line of defense at scale. |
+| **Sticky sessions (IP affinity)** | Load-balanced multi-instance setups | Routes the same IP to the same origin instance, so the in-process store sees all requests from that IP. Does not help with serverless cold-starts. |
+| **Shared external store (Redis / Upstash)** | When strict per-IP enforcement is required | Replace the `Map` in `src/lib/rate-limit.ts` with a Redis-backed sliding window (e.g. [`@upstash/ratelimit`](https://github.com/upstash/ratelimit)). Provides exact counts across all instances at the cost of an additional network hop per request. |
+| **Lower `RATE_LIMIT_MAX_REQUESTS`** | Single-instance or low-traffic deployments | A stricter per-process limit reduces the worst-case over-allowance on small clusters. |
+
+> **Single-instance note:** If your deployment runs exactly one server process
+> (e.g. a single Vercel Serverless Function container with no concurrency, or a
+> single Node.js server), the process-local limit is effectively cluster-wide and
+> no further action is required.
+
+#### How to adopt a Redis-backed store (example)
+
+```typescript
+// src/lib/rate-limit.ts — optional Redis upgrade
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(
+    Number(process.env.RATE_LIMIT_MAX_REQUESTS ?? "10"),
+    `${Number(process.env.RATE_LIMIT_WINDOW_MS ?? "60000")}ms`,
+  ),
+});
+
+export async function checkRateLimitRedis(identifier: string) {
+  const { success, remaining, reset } = await ratelimit.limit(identifier);
+  const retryAfter = success ? 0 : Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+  return { allowed: success, retryAfter, remaining };
+}
+```
+
+Add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to your environment
+and replace calls to `checkRateLimit()` with `checkRateLimitRedis()` in
+`src/app/api/check/route.ts`.
+
+---
+
 ## Security checklist
 
 - [ ] Never commit `.env.local` or secrets

@@ -1,3 +1,29 @@
+/**
+ * @module rate-limit
+ *
+ * Per-IP sliding-window rate limiter for `POST /api/check`.
+ *
+ * ## ⚠️ Process-local store — multi-instance caveat
+ *
+ * The `store` below is a plain in-process `Map`.  It is **not** shared across
+ * Node.js processes, server replicas, or serverless function invocations.
+ *
+ * Consequence: on a horizontally scaled deployment (multiple Vercel containers,
+ * a Kubernetes replica set, a PM2 cluster, or a burst of serverless cold-starts)
+ * each instance enforces its own independent counter.  A client that lands on a
+ * different instance for each request can make up to
+ * `RATE_LIMIT_MAX_REQUESTS × <instance_count>` requests before any one process
+ * throttles it.
+ *
+ * This is acceptable for a single-process deployment. For multi-instance
+ * environments, choose one of the recommended mitigations documented in
+ * `docs/ENVIRONMENT.md` (§ Rate limiting) and `docs/LOGGING_AND_PAGINATION.md`
+ * (§ Rate Limiting):
+ *
+ *   - Edge / CDN rate limiting (Vercel WAF, Cloudflare, AWS WAF) — recommended
+ *   - Sticky sessions (IP affinity at the load balancer)
+ *   - Redis-backed store (e.g. `@upstash/ratelimit`) for exact cluster-wide counts
+ */
 import { NextRequest } from "next/server";
 
 interface RateLimitEntry {
