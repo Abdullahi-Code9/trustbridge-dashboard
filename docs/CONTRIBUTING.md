@@ -32,17 +32,19 @@ Be respectful, inclusive, and constructive. Harassment or discrimination is not 
    ```
 
 3. Make focused changes — one concern per PR
-4. Ensure the project builds, tests pass, and types are valid:
+4. Ensure all local gates pass before pushing:
 
    ```bash
    npm run lint       # ESLint
    npm run typecheck  # TypeScript type checking
-   npm run test       # Vitest
-   npm run build      # Next.js build
-   npm run storybook  # Run local Storybook at http://localhost:6006
+   npm run test       # Vitest unit + API tests
+   npm run build      # Next.js build (requires env vars — see docs/ENVIRONMENT.md)
    ```
 
-   All of these run in CI and must pass before merging.
+   CI runs all four of these steps (`lint`, `typecheck`, `vitest run`, `build`)
+   on every push and pull request. A failing test or type error will block the
+   PR from merging. See [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+   for the exact steps.
 
 ---
 
@@ -75,9 +77,12 @@ npm run build-storybook
 - [ ] Docs updated in `docs/` and linked from README
 - [ ] `npm run lint` passes (ESLint)
 - [ ] `npm run typecheck` passes (TypeScript strict mode)
-- [ ] `npm run test` passes (all tests)
-- [ ] `npm run build` passes (Next.js build succeeds)
+- [ ] `npm run test` passes (all Vitest unit + API tests)
+- [ ] `npm run build` passes locally (Next.js build)
 - [ ] No secrets committed
+
+> **Note:** CI runs `lint`, `typecheck`, `vitest run`, and `build` automatically.
+> Your PR must pass all four before it can be merged.
 
 ### PR title format
 
