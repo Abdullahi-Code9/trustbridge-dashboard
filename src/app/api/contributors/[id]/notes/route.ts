@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { recordAuditLog } from "@/lib/audit";
 import { authOptions } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { isMaintainer } from "@/lib/maintainers";
 import { prisma } from "@/lib/prisma";
 
@@ -20,6 +21,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
