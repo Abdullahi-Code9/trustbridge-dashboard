@@ -105,11 +105,101 @@ Update or create OAuth App:
 
 ---
 
+## Backup and restore drill (Docker Compose)
+
+Use the same Postgres container defined in [DOCKER_COMPOSE.md](./DOCKER_COMPOSE.md) for a local recovery drill. This is a write-up, not a production substitute for automated backups.
+
+### 1) Create a dump
+
+```bash
+docker-compose exec postgres pg_dump -U trustbridge -d trustbridge_dashboard --format=custom --file=/tmp/trustbridge_dashboard.pg_dump
+```
+
+### 2) Copy the dump off the container
+
+```bash
+docker cp trustbridge-postgres:/tmp/trustbridge_dashboard.pg_dump ./artifacts/trustbridge_dashboard.pg_dump
+```
+
+### 3) Restore into a fresh database
+
+```bash
+docker-compose exec postgres createdb -U trustbridge trustbridge_dashboard
+
+docker cp ./artifacts/trustbridge_dashboard.pg_dump trustbridge-postgres:/tmp/trustbridge_dashboard.pg_dump
+docker-compose exec postgres pg_restore --clean --if-exists -U trustbridge -d trustbridge_dashboard /tmp/trustbridge_dashboard.pg_dump
+```
+
+### 4) Re-run migrations after restore
+
+```bash
+DATABASE_URL="postgresql://trustbridge:trustbridge-dev-password@localhost:5432/trustbridge_dashboard?schema=public" npm run db:deploy
+```
+
+> Never commit dump files or leave them in a shared working tree. These dumps may contain GitHub usernames, wallet addresses, registration history, and other personal data. Use encrypted storage or a managed backup service for production.
+
 ## Monitoring & limits
 
+- **Grafana Dashboards & Metrics** — import ready-made dashboards in [docs/grafana/](./grafana/README.md) ([Overview JSON](./grafana/trustbridge-overview.json) / [JSON API JSON](./grafana/trustbridge-json-api.json)) for live payout readiness and health monitoring.
 - **Horizon rate limits** — batch re-check queries one account per registration; large Waves may need throttling (future enhancement)
 - **Vercel serverless timeout** — default 10s on Hobby; batch re-check may need pagination for 100+ contributors
 - **Database connections** — use connection pooling (Neon pooler, Supabase pooler, or Prisma Accelerate)
+
+---
+
+## Maintenance mode
+
+Use maintenance mode when deploying during a Wave, running a migration, or
+otherwise doing work that must not race with maintainer writes.
+
+### Turning it on / off
+
+Set the **`MAINTENANCE`** environment variable to a truthy value (`1`, `true`,
+`on`, `yes`, `enabled`) and redeploy (or, on Vercel, edit the env var and
+redeploy). Unset it (or set it to `0`) to turn maintenance mode off.
+
+`MAINTENANCE` is intentionally **env-only**. It is the one switch that must keep
+working when the database is down, so it is never gated behind a DB flag — a
+maintainer can always disable it from the platform's env settings. Operators
+running with `FEATURE_FLAGS_DB_ENABLED` additionally have the `maintenance_mode`
+feature flag (`FeatureFlag` row or `FEATURE_FLAG_MAINTENANCE_MODE` env), which
+composes with `MAINTENANCE` (either one being on turns it on).
+
+Optional: **`MAINTENANCE_MESSAGE`** overrides the banner / 503 body text.
+
+### What it does
+
+| Surface | Behaviour while `MAINTENANCE` is on |
+|---|---|
+| Every page | Amber banner at the top (`src/components/MaintenanceBanner.tsx`) |
+| `GET` / `HEAD` on any route | Unchanged — **reads stay up** |
+| `POST` / `PUT` / `PATCH` / `DELETE` under `/api/*` | `503` `{ "error": "maintenance_mode" }` with `Retry-After: 120`, from `src/middleware.ts` |
+| `GET /api/health` | Still `200` — probes and uptime checks are unaffected |
+| `/api/auth/*` | Exempt — sign-in keeps working |
+| `/api/check` | Exempt — a pure Horizon read (POST only to keep the address out of logs); the registration page keeps validating addresses |
+| `/api/webhooks/*` | Exempt — GitHub / trustbridge-action deliveries are **not** dropped; they land and are processed normally |
+
+### Caveats to handle separately
+
+- **Scheduled jobs (cron).** Cron requests are not routed through the Next.js
+  middleware, so `/api/contract-sync`, email nudges, etc. **continue to run**
+  during maintenance. If a deploy needs them paused, disable the cron trigger
+  at the platform (Vercel Cron / GitHub Actions schedule) or set `CRON_SECRET`
+  to a value the scheduler doesn't have for the duration.
+- **Webhook side effects.** Because webhooks are exempt, a delivery received
+  mid-deploy will still write to the database. That is deliberate (retries are
+  finite and data would be lost otherwise) — factor it into migration ordering.
+- **In-flight background queue jobs** already `processing` when the deploy
+  starts are not interrupted; only the *enqueue* endpoints are blocked.
+
+### Validate
+
+```bash
+npm test -- middleware
+```
+
+covers `src/lib/maintenance.ts` and the middleware gate
+(`tests/unit/middleware-maintenance.test.ts`).
 
 ---
 
@@ -143,6 +233,29 @@ jobs:
 
 ## Related docs
 
+- [Grafana dashboards & metrics](./grafana/README.md)
 - [Setup guide](./SETUP.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Contributing](./CONTRIBUTING.md)
+
+---
+
+## Background Worker Process
+
+For durable background processing (such as batch rechecks across all contributors or asynchronous task runs), TrustBridge uses a durable database-backed queue (`QueueJob` table in PostgreSQL).
+
+### Running the Worker
+
+In production environments (or alongside Next.js on Render/Railway/Fly.io/EC2), run the dedicated worker process:
+
+```bash
+npm run worker
+```
+
+### Worker Architecture & Characteristics
+
+1. **Durable Persistence**: Jobs are enqueued into PostgreSQL with status `pending`. Jobs survive application deployments and server restarts without loss.
+2. **Atomic Claiming**: Workers atomically claim pending jobs (`UPDATE ... WHERE id = ... AND status = 'pending'`), preventing duplicate processing when multiple worker instances run in parallel.
+3. **Poison Message Handling**: If a job fails or encounters an unhandled exception, it is marked as `failed` with the error message persisted in the database. The worker continues executing subsequent jobs.
+4. **Graceful Shutdown**: The worker process listens for `SIGINT` and `SIGTERM` to finish processing the in-flight job before exiting cleanly.
+5. **Environment Configuration**: Ensure the worker has access to `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`, `GITHUB_MAINTAINER_ORG`, and `NEXT_PUBLIC_HORIZON_URL`.

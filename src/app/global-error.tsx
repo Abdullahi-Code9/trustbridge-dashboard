@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { classifyError, globalErrorLogger } from "@/lib/error-handling";
+import { captureException } from "@/lib/sentry";
 
 import "./globals.css";
 
@@ -21,8 +22,18 @@ export default function GlobalError({
 }) {
   const classification = classifyError(error);
 
+  // Use Next.js digest as the user-visible reference ID. The digest is a
+  // server-side fingerprint that appears in server logs — never expose the
+  // raw stack or message to users.
+  const displayId = error.digest ?? null;
+
   useEffect(() => {
     globalErrorLogger.log(error, "root-layout");
+    // Capture to Sentry with root-layout context
+    captureException(error, {
+      context: "root-layout-error-boundary",
+      digest: error.digest,
+    });
   }, [error]);
 
   return (
@@ -33,6 +44,17 @@ export default function GlobalError({
           <p className="mt-2 text-muted-foreground">
             {classification.message}
           </p>
+          {displayId && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Reference ID:{" "}
+              <code
+                aria-label={`Error reference ID: ${displayId}`}
+                className="select-all rounded bg-muted px-1 py-0.5 font-mono"
+              >
+                {displayId}
+              </code>
+            </p>
+          )}
           <button
             type="button"
             onClick={reset}

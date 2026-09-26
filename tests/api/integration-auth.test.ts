@@ -11,7 +11,8 @@ vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/horizon", () => ({ checkStellarAddress: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    registration: { findUnique: vi.fn(), upsert: vi.fn() },
+    registration: { findUnique: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
+    registrationConflict: { create: vi.fn().mockResolvedValue({}) },
   },
 }));
 vi.mock("@/lib/stellar", () => ({ isValidStellarAddress: vi.fn() }));
@@ -105,7 +106,7 @@ describe("POST /api/register — authentication", () => {
   it("allows contributor (non-maintainer) to register", async () => {
     mockSession({ isMaintainer: false });
     vi.mocked(isValidStellarAddress).mockReturnValue(true);
-    vi.mocked(prisma.registration.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.registration.findFirst).mockResolvedValue(null);
     mockHorizonReady();
     vi.mocked(prisma.registration.upsert).mockResolvedValue({
       id: "reg-1",
@@ -129,7 +130,7 @@ describe("POST /api/register — authentication", () => {
   it("allows maintainer to register (no special block)", async () => {
     mockSession({ isMaintainer: true });
     vi.mocked(isValidStellarAddress).mockReturnValue(true);
-    vi.mocked(prisma.registration.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.registration.findFirst).mockResolvedValue(null);
     mockHorizonReady();
     vi.mocked(prisma.registration.upsert).mockResolvedValue({
       id: "reg-2",
@@ -174,7 +175,7 @@ describe("POST /api/register — input validation", () => {
   it("returns 409 when address is already registered to another user", async () => {
     mockSession({ id: "user-2" });
     vi.mocked(isValidStellarAddress).mockReturnValue(true);
-    vi.mocked(prisma.registration.findUnique).mockResolvedValue({
+    vi.mocked(prisma.registration.findFirst).mockResolvedValue({
       id: "reg-existing",
       userId: "user-1", // different user
       stellarAddress: VALID_ADDRESS,
@@ -189,6 +190,7 @@ describe("POST /api/register — input validation", () => {
   it("allows re-registration to the same user (address update)", async () => {
     mockSession({ id: "user-1" });
     vi.mocked(isValidStellarAddress).mockReturnValue(true);
+    vi.mocked(prisma.registration.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.registration.findUnique).mockResolvedValue({
       id: "reg-1",
       userId: "user-1", // same user
@@ -219,6 +221,7 @@ describe("POST /api/register — readiness in response", () => {
   beforeEach(() => {
     mockSession();
     vi.mocked(isValidStellarAddress).mockReturnValue(true);
+    vi.mocked(prisma.registration.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.registration.findUnique).mockResolvedValue(null);
   });
 

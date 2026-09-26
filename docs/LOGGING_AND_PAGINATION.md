@@ -151,7 +151,98 @@ output {
 
 ---
 
-## Pagination and Infinite Scroll
+## Request ID Contract
+
+### Overview
+
+Every API request is assigned an opaque `x-request-id` header value — a UUID v4 — that travels through the request/response lifecycle and can be surfaced in UI error messages so users can relay it to support. The utilities live in [`src/lib/request-id.ts`](../src/lib/request-id.ts).
+
+### Generation
+
+`generateRequestId()` produces a UUID v4 using `crypto.randomUUID()` (available in Node.js 14.17+, Edge Runtime, and all modern browsers) with a manual `crypto.getRandomValues()` fallback for older Node 18.x environments:
+
+```typescript
+import { generateRequestId } from "@/lib/request-id";
+
+const requestId = generateRequestId();
+// → "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+```
+
+### Middleware propagation
+
+Middleware should read an incoming `x-request-id` header (forwarded by a load balancer or upstream proxy) or generate a fresh one, then forward it on both the downstream request and the response:
+
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { generateRequestId, extractRequestId } from "@/lib/request-id";
+
+export function middleware(request: NextRequest) {
+  // Honour an upstream-supplied ID, otherwise mint a new one
+  const requestId = extractRequestId(request.headers) ?? generateRequestId();
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  // Echo the ID back so clients and CDNs can correlate logs
+  response.headers.set("x-request-id", requestId);
+  return response;
+}
+```
+
+`extractRequestId()` validates that the incoming value matches the UUID v4 format and returns `null` for absent or malformed values — preventing header injection from propagating into logs.
+
+### Structured log correlation
+
+Pass the request ID in the `details` field of every structured log entry so log aggregators can group all events for a single request:
+
+```typescript
+import { StructuredLogger } from "@/lib/logger";
+import { extractRequestId } from "@/lib/request-id";
+
+const logger = new StructuredLogger("api.register");
+
+export async function POST(request: NextRequest) {
+  const requestId = extractRequestId(request.headers);
+
+  logger.info("incoming_request", {
+    method: "POST",
+    pathname: "/api/register",
+    requestId,
+  });
+
+  // ... handler logic ...
+}
+```
+
+### UI display — error reference IDs
+
+[`src/components/ErrorFallback.tsx`](../src/components/ErrorFallback.tsx) surfaces the request ID (or Next.js error `digest`) as a **Reference ID** so users can copy it when filing a support report:
+
+```
+Reference ID: f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
+Pass the ID explicitly when you have it:
+
+```tsx
+<ErrorFallback error={error} reset={reset} requestId={requestId} />
+```
+
+When no `requestId` prop is provided, `ErrorFallback` falls back to `error.digest` (Next.js's server-error fingerprint), so error boundaries always show a correlatable reference ID without exposing raw stack traces to users.
+
+### Validation
+
+`isValidRequestId(id)` checks that a string matches the UUID v4 pattern. Use it before including any header-supplied value in logs:
+
+```typescript
+import { isValidRequestId } from "@/lib/request-id";
+
+const raw = request.headers.get("x-request-id");
+const safeId = raw && isValidRequestId(raw) ? raw : null;
+```
+
+---
 
 ### Overview
 

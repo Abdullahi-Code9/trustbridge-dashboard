@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpDown,
@@ -52,6 +52,7 @@ interface ContributorTableProps {
   onExport?: () => void;
   onRecheck?: (id: string) => void;
   recheckingId?: string | null;
+  onBanToggle?: (githubUsername: string, action: "ban" | "unban", reason?: string) => Promise<void>;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoading?: boolean;
@@ -269,12 +270,12 @@ function MobileContributorCard({
     </article>
   );
 }
-
 export function ContributorTable({
   contributors,
   onExport,
   onRecheck,
-  recheckingId,
+  recheckingId = null,
+  onBanToggle,
   onLoadMore,
   hasMore = false,
   isLoading = false,
@@ -283,8 +284,15 @@ export function ContributorTable({
   registerUrl = "/register",
   className,
 }: ContributorTableProps) {
+  const headingId = useId();
   const columnPickerId = useId();
   const searchInputId = useId();
+  const paletteTitleId = useId();
+  const headingId = useId();
+  const columnPickerRef = useRef<HTMLFieldSetElement | null>(null);
+  const columnPickerToggleRef = useRef<HTMLButtonElement | null>(null);
+  const csvExportRef = useRef<HTMLButtonElement | null>(null);
+  const jsonExportRef = useRef<HTMLButtonElement | null>(null);
   const [filter, setFilter] = useState<FilterOption>("all");
   const [sortKey, setSortKey] = useState<SortKey>("githubUsername");
   const [sortAsc, setSortAsc] = useState(true);
@@ -296,17 +304,90 @@ export function ContributorTable({
   // Which export the confirmation dialog is standing in front of, or null when
   // it is closed. Both formats share one dialog.
   const [pendingExport, setPendingExport] = useState<"csv" | "json" | null>(null);
+  const [banDialogRow, setBanDialogRow] = useState<ContributorRow | null>(null);
+  const [banReasonInput, setBanReasonInput] = useState("");
+  const [isSubmittingBan, setIsSubmittingBan] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const csvExportRef = useRef<HTMLButtonElement | null>(null);
+  const jsonExportRef = useRef<HTMLButtonElement | null>(null);
+  const columnPickerToggleRef = useRef<HTMLButtonElement | null>(null);
+  const columnPickerRef = useRef<HTMLFieldSetElement | null>(null);
+  const paletteRef = useRef<HTMLDivElement | null>(null);
+  const paletteOpenerRef = useRef<HTMLElement | null>(null);
 
   const staleSummary = useMemo(
     () => buildStalenessSummary(contributors),
     [contributors]
   );
 
+  React.useEffect(() => {
+    if (!showColumnPicker) return;
+    // Focus the panel itself, not its first checkbox: landing on a checkbox
+    // reads as "Stellar address, checked" with no announcement of what the
+    // panel is or how to leave it.
+    columnPickerRef.current?.focus();
+  }, [showColumnPicker]);
+
   const filtered = useMemo(() => {
     const byFilter = filterContributors(contributors, filter);
     const bySearch = searchContributors(byFilter, search);
     return sortContributors(bySearch, sortKey, sortAsc);
   }, [contributors, filter, search, sortAsc, sortKey]);
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        paletteOpenerRef.current = document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+        setPaletteOpen(true);
+      }
+    }
+
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const focusable = Array.from(
+      paletteRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled])'
+      ) ?? []
+    );
+    focusable[0]?.focus();
+
+    const opener = paletteOpenerRef.current ?? searchInputRef.current;
+    return () => {
+      opener?.focus();
+    };
+  }, [paletteOpen]);
+
+  function handlePaletteKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setPaletteOpen(false);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      paletteRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled])'
+      ) ?? []
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -315,6 +396,54 @@ export function ContributorTable({
     }
     setSortKey(key);
     setSortAsc(true);
+  }
+
+  /**
+   * Run an export and hand focus back to the button that started it.
+   *
+   * Both export paths go through `window.confirm()`, which is a modal dialog:
+   * the browser takes focus for the prompt and, in Chrome and Safari, does not
+   * reliably return it to the trigger. A keyboard user is then dropped at the
+   * top of the document and has to tab back through the whole toolbar — which
+   * for this table means the search box, four filter buttons, the column
+   * toggle, and every visible column checkbox.
+   */
+  function runExport(
+    action: () => void,
+    trigger: React.RefObject<HTMLButtonElement>
+  ) {
+    try {
+      action();
+    } finally {
+      trigger.current?.focus();
+    }
+  }
+
+  /**
+   * Closing the column picker must return focus to the toggle that opened it.
+   * The panel's checkboxes are removed from the DOM on close; whatever focus
+   * was inside it goes to `document.body` unless it is moved deliberately.
+   */
+  function closeColumnPicker() {
+    setShowColumnPicker(false);
+    columnPickerToggleRef.current?.focus();
+  }
+
+  function handleColumnPickerKeyDown(
+    event: React.KeyboardEvent<HTMLFieldSetElement>
+  ) {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      closeColumnPicker();
+    }
+  }
+
+  function toggleColumnPicker() {
+    if (showColumnPicker) {
+      closeColumnPicker();
+      return;
+    }
+    setShowColumnPicker(true);
   }
 
   function toggleColumn(key: ContributorColumnKey) {
@@ -390,14 +519,31 @@ export function ContributorTable({
   }
 
   return (
-    <div className={cn("space-y-4", className)}>
-      <div className="flex flex-wrap items-end gap-3">
+    <section
+      id="contributor-table"
+      aria-labelledby={headingId}
+      tabIndex={-1}
+      className={cn("space-y-4 outline-none", className)}
+      data-testid="contributor-table-region"
+    >
+      <h2 id={headingId} className="sr-only">
+        Contributor payout readiness
+      </h2>
+
+      {/* Labelled so a screen reader announces "Contributor table controls"
+          rather than an unnamed group of eleven buttons. */}
+      <div
+        className="flex flex-wrap items-end gap-3"
+        role="group"
+        aria-label="Contributor table controls"
+      >
         <div className="relative min-w-[220px] max-w-sm flex-1">
           <label htmlFor={searchInputId} className="sr-only">
             Search contributors by GitHub username or Stellar address
           </label>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            ref={searchInputRef}
             id={searchInputId}
             type="search"
             placeholder="Search by username or address"
@@ -430,10 +576,11 @@ export function ContributorTable({
         </fieldset>
 
         <Button
+          ref={columnPickerToggleRef}
           size="sm"
           variant="outline"
-          onClick={() => setShowColumnPicker((current) => !current)}
-          aria-pressed={showColumnPicker}
+          onClick={toggleColumnPicker}
+          aria-expanded={showColumnPicker}
           aria-controls={columnPickerId}
         >
           <SlidersHorizontal className="h-4 w-4" />
@@ -443,6 +590,7 @@ export function ContributorTable({
         {onExport && (
           <div className="flex flex-wrap gap-2">
             <Button
+              ref={csvExportRef}
               size="sm"
               variant={staleSummary.stale ? "destructive" : "outline"}
               onClick={() => setPendingExport("csv")}
@@ -452,6 +600,7 @@ export function ContributorTable({
               {staleSummary.stale ? "Export CSV (stale)" : "Export CSV"}
             </Button>
             <Button
+              ref={jsonExportRef}
               size="sm"
               variant={staleSummary.stale ? "destructive" : "outline"}
               onClick={() => setPendingExport("json")}
@@ -465,10 +614,18 @@ export function ContributorTable({
       </div>
 
       {showColumnPicker && (
-        <fieldset id={columnPickerId} className="rounded-lg border bg-card px-4 py-3">
+        <fieldset
+          id={columnPickerId}
+          ref={columnPickerRef}
+          tabIndex={-1}
+          onKeyDown={handleColumnPickerKeyDown}
+          className="rounded-lg border bg-card px-4 py-3 outline-none"
+          data-testid="column-picker"
+        >
           <legend className="mb-2 text-sm font-medium text-muted-foreground">
             Toggle visible columns
           </legend>
+          <p className="sr-only">Press Escape to close and return to the Columns button.</p>
           <div className="flex flex-wrap gap-3">
             {CONTRIBUTOR_COLUMNS.map((col) => (
               <label
@@ -490,6 +647,86 @@ export function ContributorTable({
             ))}
           </div>
         </fieldset>
+      )}
+
+      {paletteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-background/60 px-4 pt-[15vh] backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPaletteOpen(false);
+          }}
+        >
+          <div
+            ref={paletteRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={paletteTitleId}
+            onKeyDown={handlePaletteKeyDown}
+            className="w-full max-w-lg rounded-xl border bg-card p-4 shadow-xl"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <h2 id={paletteTitleId} className="font-semibold">Command palette</h2>
+              <kbd className="text-xs text-muted-foreground">Esc</kbd>
+            </div>
+            <div className="mt-3 grid gap-2">
+              <Input
+                aria-label="Command palette search"
+                placeholder="Search contributors"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <p className="pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Filter readiness
+              </p>
+              {([
+                ["all", "All contributors"],
+                ["ready", "Ready"],
+                ["low_reserve", "Low reserve"],
+                ["needs_attention", "Needs attention"],
+              ] as const).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  variant={filter === value ? "stellar" : "outline"}
+                  className="justify-start"
+                  aria-pressed={filter === value}
+                  onClick={() => { setFilter(value); setPaletteOpen(false); }}
+                >
+                  {label}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-start"
+                onClick={() => { setPaletteOpen(false); searchInputRef.current?.focus(); }}
+              >
+                Focus table search
+              </Button>
+              {onExport && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => { setPaletteOpen(false); setPendingExport("csv"); }}
+                  >
+                    Export CSV
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => { setPaletteOpen(false); setPendingExport("json"); }}
+                  >
+                    Export JSON
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {staleSummary.stale && (
@@ -605,7 +842,16 @@ export function ContributorTable({
                 >
                   {isVisible("githubUsername") && (
                     <th className="px-4 py-3 font-medium" scope="row">
-                      {formatGithubHandle(row.githubUsername)}
+                      <span>{formatGithubHandle(row.githubUsername)}</span>
+                      {row.banned && (
+                        <span
+                          className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950/80 dark:text-red-300"
+                          title={row.banReason ? `Banned: ${row.banReason}` : "Banned"}
+                          data-testid={`banned-badge-${row.githubUsername}`}
+                        >
+                          🚫 Banned
+                        </span>
+                      )}
                     </th>
                   )}
                   {isVisible("stellarAddress") && (
@@ -639,22 +885,44 @@ export function ContributorTable({
                   <td className="min-w-[280px] px-4 py-3">
                     <ContributorDebugPanel row={row} />
                   </td>
-                  {onRecheck && (
+                  {(onRecheck || onBanToggle) && (
                     <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onRecheck(row.id)}
-                        disabled={recheckingId === row.id}
-                        aria-label={`Re-check ${row.githubUsername} via Horizon`}
-                      >
-                        {recheckingId === row.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
+                      <div className="flex items-center justify-end gap-2">
+                        {onRecheck && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onRecheck(row.id)}
+                            disabled={recheckingId === row.id}
+                            aria-label={`Re-check ${row.githubUsername} via Horizon`}
+                          >
+                            {recheckingId === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4" />
+                            )}
+                            Re-check
+                          </Button>
                         )}
-                        Re-check
-                      </Button>
+                        {onBanToggle && (
+                          <Button
+                            size="sm"
+                            variant={row.banned ? "outline" : "destructive"}
+                            onClick={() => {
+                              if (row.banned) {
+                                void onBanToggle(row.githubUsername, "unban");
+                              } else {
+                                setBanReasonInput("");
+                                setBanDialogRow(row);
+                              }
+                            }}
+                            aria-label={`${row.banned ? "Unban" : "Ban"} ${row.githubUsername}`}
+                            data-testid={`ban-toggle-${row.githubUsername}`}
+                          >
+                            {row.banned ? "Unban" : "Ban"}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -709,18 +977,69 @@ export function ContributorTable({
         }
         cancelLabel="Cancel"
         destructive={staleSummary.stale}
-        onCancel={() => setPendingExport(null)}
+        onCancel={() => {
+          const format = pendingExport;
+          const ref = format === "json" ? jsonExportRef : csvExportRef;
+          setPendingExport(null);
+          ref.current?.focus();
+        }}
         onConfirm={() => {
           const format = pendingExport;
+          const ref = format === "json" ? jsonExportRef : csvExportRef;
           setPendingExport(null);
-          if (format === "json") {
-            exportContributorsJson(contributors, true);
-          } else {
-            onExport?.();
+          runExport(() => {
+            if (format === "json") {
+              exportContributorsJson(contributors, true);
+            } else {
+              onExport?.();
+            }
+          }, ref);
+        }}
+      />
+
+      <ConfirmDialog
+        open={banDialogRow !== null}
+        title={`Ban Contributor @${banDialogRow?.githubUsername}?`}
+        description={
+          <div className="space-y-3 pt-2">
+            <p>
+              Banning this contributor will reject all current and future registration or recheck attempts for this GitHub account.
+            </p>
+            <div>
+              <label htmlFor="ban-reason-input" className="block text-xs font-semibold text-foreground mb-1">
+                Reason for ban <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="ban-reason-input"
+                type="text"
+                placeholder="e.g. Abusive behavior, stolen wallet, TOS violation"
+                value={banReasonInput}
+                onChange={(e) => setBanReasonInput(e.target.value)}
+                data-testid="ban-reason-input"
+              />
+            </div>
+          </div>
+        }
+        confirmLabel={isSubmittingBan ? "Banning..." : "Confirm Ban"}
+        cancelLabel="Cancel"
+        destructive={true}
+        onCancel={() => {
+          setBanDialogRow(null);
+          setBanReasonInput("");
+        }}
+        onConfirm={async () => {
+          if (!banDialogRow || !banReasonInput.trim() || isSubmittingBan || !onBanToggle) return;
+          try {
+            setIsSubmittingBan(true);
+            await onBanToggle(banDialogRow.githubUsername, "ban", banReasonInput.trim());
+            setBanDialogRow(null);
+            setBanReasonInput("");
+          } finally {
+            setIsSubmittingBan(false);
           }
         }}
       />
-    </div>
+    </section>
   );
 }
 
