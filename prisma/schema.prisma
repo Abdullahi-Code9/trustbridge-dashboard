@@ -23,6 +23,8 @@ model User {
   auditLogs       TokenAuditLog[]
   addressHistory  AddressHistoryRecord[]
   invites         Invite[]
+  apiKeys         ApiKey[]
+  notifications   Notification[]
   banned          Boolean       @default(false)
   bannedAt        DateTime?
   banReason       String?
@@ -186,6 +188,30 @@ model FeatureFlag {
   updatedById String?
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+}
+
+/// Maintainer API keys for programmatic / cron access to export endpoints.
+/// The raw key is shown once at creation and never stored.
+/// Only the SHA-256 hex digest is persisted here.
+model ApiKey {
+  id              String    @id @default(cuid())
+  maintainerOrgId String    @default("default")
+  /// SHA-256 hex of the raw bearer token. Never store the raw key.
+  keyHash         String    @unique
+  /// Human-readable label chosen by the creator.
+  name            String
+  /// Allowed scopes, e.g. ["export:read"]. "*" grants everything (reserved).
+  scopes          String[]  @default([])
+  createdById     String
+  createdBy       User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt       DateTime?
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([keyHash])
+  @@index([createdById])
+  @@index([createdAt])
 }
 
 model Account {

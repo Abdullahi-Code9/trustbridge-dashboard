@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { NetworkStatusPanel } from "@/components/NetworkStatusPanel";
 import { SessionPanel } from "@/components/SessionPanel";
-import { RestorePanel } from "@/components/RestorePanel";
+import { ApiKeyPanel } from "@/components/ApiKeyPanel";
 import {
   Card,
   CardContent,
@@ -114,6 +114,10 @@ export default function MaintainerSettingsPage() {
         ) : networkQuery.data ? (
           <NetworkStatusPanel config={networkQuery.data} />
         ) : null}
+      </div>
+
+      <div className="mb-8">
+        <ApiKeyPanel />
       </div>
 
       <Card className="mb-8">

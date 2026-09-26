@@ -455,6 +455,33 @@ These follow the [IETF RateLimit Headers draft](https://datatracker.ietf.org/doc
 
 ---
 
+## API keys (maintainer export automation)
+
+Maintainer API keys let cron jobs and CI pipelines authenticate against the contributor export endpoints **without a browser session or GitHub OAuth cookie**. They are scoped to the minimum required permission and are hashed at rest — the raw secret is shown exactly once at creation time and never stored.
+
+### No new environment variables required
+
+API keys are self-contained in the database. The only prerequisite is that `DATABASE_URL` and `TOKEN_ENCRYPTION_KEY` are already configured. See [docs/API_KEYS.md](./API_KEYS.md) for the full workflow.
+
+### `API_KEY_RATE_LIMIT_WINDOW_MS` _(optional, reserved)_
+
+Currently the per-IP rate limit for API key–authenticated export requests is hardcoded to **60 requests per 60 seconds**. A future release will read `API_KEY_RATE_LIMIT_WINDOW_MS` and `API_KEY_RATE_LIMIT_MAX_REQUESTS` from the environment to allow operators to tune the window. For now, use the existing `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS` env vars to tune the process-wide default, which also affects `/api/check` and other guarded endpoints.
+
+### Security properties
+
+| Property | Implementation |
+|---|---|
+| Raw key storage | Never — only SHA-256 hex digest is persisted |
+| Key format | `tb_<43 url-safe base64 chars>` (~258 bits entropy) |
+| Scope enforcement | `export:read` required; checked on every request |
+| Expiry | Optional per-key ISO-8601 datetime |
+| Revocation | Soft-delete (`revokedAt` timestamp); effective immediately |
+| Rate limiting | 60 requests / 60 s per IP (in-process sliding window) |
+| Audit trail | Every create / revoke / rejected use written to `AuditLog` |
+| Max active keys | 10 per user (prevents credential sprawl) |
+
+---
+
 ## Security checklist
 
 - [ ] Never commit `.env.local` or secrets
@@ -470,6 +497,7 @@ These follow the [IETF RateLimit Headers draft](https://datatracker.ietf.org/doc
 - [Deployment](./DEPLOYMENT.md)
 - [Feature flags](./FEATURE_FLAGS.md)
 - [Architecture](./ARCHITECTURE.md)
+- [API keys](./API_KEYS.md)
 
 - // src/lib/notifications/webhook.ts
 

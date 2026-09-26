@@ -14,6 +14,11 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "export.csv.failed": "Failed to export contributors CSV",
   "export.cron": "Automated nightly treasury CSV export",
   "export.cron.failed": "Automated nightly treasury CSV export failed",
+  "export.json": "Exported contributors JSON",
+  "export.json.failed": "Failed to export contributors JSON",
+  "api_key.created": "Created an API key",
+  "api_key.revoked": "Revoked an API key",
+  "api_key.use_rejected": "API key use rejected",
 };
 
 export function describeAuditAction(action: string): string {
