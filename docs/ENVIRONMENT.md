@@ -173,6 +173,79 @@ Deployments that override any of these in their environment keep their override 
 
 ## Optional variables
 
+### `FREEZE_WINDOW_ENABLED`
+
+Master switch for the Wave freeze window. When set to `false` the freeze is
+always inactive regardless of `FREEZE_WINDOW_START` / `FREEZE_WINDOW_END`.
+
+| Value | Behaviour |
+|-------|-----------|
+| Unset | Freeze is determined by `FREEZE_WINDOW_START` and `FREEZE_WINDOW_END` |
+| `false` | Freeze is always **off** (explicit override) |
+| `true` / any truthy value | Freeze is governed by the time-range variables |
+
+### `FREEZE_WINDOW_START`
+
+ISO-8601 datetime string marking the **start** of the active freeze window.
+
+```
+FREEZE_WINDOW_START=2026-09-25T00:00:00.000Z
+```
+
+- Parsed with `new Date()`. Invalid values are silently ignored (freeze inactive).
+- Must be set alongside `FREEZE_WINDOW_END`; either variable alone has no effect.
+- Setting `FREEZE_WINDOW_ENABLED=false` overrides both time variables.
+
+### `FREEZE_WINDOW_END`
+
+ISO-8601 datetime string marking the **end** of the freeze window.
+
+```
+FREEZE_WINDOW_END=2026-09-25T08:00:00.000Z
+```
+
+- Same parsing rules as `FREEZE_WINDOW_START`.
+- Once the current time passes this value the freeze deactivates automatically;
+  no deploy or restart is required.
+
+#### Freeze-window behaviour
+
+While a freeze window is active:
+
+- **`POST /api/contributors`** (batch recheck) returns `423 WAVE_FREEZE_ACTIVE`.
+- **`POST /api/contributors/[id]`** (single recheck) returns `423 WAVE_FREEZE_ACTIVE`.
+- **`POST /api/register`** (address change) returns `423 WAVE_FREEZE_ACTIVE`.
+- **`GET /api/freeze-status`** returns `{ "active": true, ... }` — the maintainer
+  dashboard polls this every 30 s and shows a **FreezeWindowBanner** automatically.
+- The banner disappears as soon as `active` flips back to `false` (i.e. the window
+  ends or `FREEZE_WINDOW_ENABLED` is changed to `false` and the 30 s poll fires).
+
+Maintainers can bypass a freeze by sending `x-freeze-override: true` (header) or
+`?overrideFreeze=true` (query parameter). Every override is written to the audit
+log.
+
+#### Example — schedule a freeze
+
+```bash
+FREEZE_WINDOW_ENABLED=true
+FREEZE_WINDOW_START=2026-09-25T00:00:00.000Z
+FREEZE_WINDOW_END=2026-09-25T08:00:00.000Z
+```
+
+#### Example — disable entirely
+
+```bash
+FREEZE_WINDOW_ENABLED=false
+```
+
+> **See also:** [`src/lib/freeze-window.ts`](../src/lib/freeze-window.ts) —
+> `isFreezeWindowActive()` and `enforceFreezeWindowGuard()` for implementation
+> details. [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md) for Wave operations runbook.
+> [`docs/FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the complementary
+> `maintenance_mode` feature flag.
+
+---
+
 ### `REGISTRY_MODE`
 
 Reported by the contributor REST endpoints (`/api/contributors`, `/api/contributors/paginated`) as `registryMode` in their response body, via `src/lib/registry-mode.ts`.

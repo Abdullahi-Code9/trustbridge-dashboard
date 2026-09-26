@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { recordAuditLog } from "@/lib/audit";
 import { authOptions } from "@/lib/auth";
@@ -11,11 +12,49 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Basic XSS sanitizer stripping HTML tags from string.
+ * Strips HTML tags from a string to prevent stored XSS.
+ * Prefer escape-on-render (e.g. React's default JSX escaping) as the primary
+ * defence; this stripping is a belt-and-suspenders sanitisation at input time.
  */
-function sanitizeInput(str: string): string {
+function stripHtml(str: string): string {
   return str.replace(/<[^>]*>?/gm, "").trim();
 }
+
+/**
+ * Zod schema for the PATCH /api/contributors/[id]/notes request body.
+ *
+ * - notes: optional free-text field, max 1 000 chars after HTML-strip
+ * - tags:  optional array of short labels, max 10 items, each max 30 chars
+ *
+ * HTML content is stripped before length validation so a payload that is
+ * entirely markup cannot sneak past the limit.
+ */
+const NotesBodySchema = z.object({
+  notes: z
+    .string()
+    .transform(stripHtml)
+    .pipe(
+      z
+        .string()
+        .max(1000, "Note exceeds 1,000 character limit")
+    )
+    .nullable()
+    .optional(),
+  tags: z
+    .array(
+      z
+        .string()
+        .transform(stripHtml)
+        .pipe(
+          z
+            .string()
+            .min(1, "Tag must not be empty after sanitisation")
+            .max(30, "Each tag must be 30 characters or fewer")
+        )
+    )
+    .max(10, "Maximum 10 tags allowed")
+    .optional(),
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -47,34 +86,31 @@ export async function PATCH(
     );
   }
 
+  let rawBody: unknown;
   try {
-    const body = (await request.json()) as { notes?: string; tags?: string[] };
-    let sanitizedNotes: string | null = null;
-    let sanitizedTags: string[] = [];
+    rawBody = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-    if (body.notes !== undefined && body.notes !== null) {
-      const clean = sanitizeInput(body.notes);
-      if (clean.length > 1000) {
-        return NextResponse.json(
-          { error: "Note exceeds 1,000 character limit" },
-          { status: 400 }
-        );
-      }
-      sanitizedNotes = clean;
-    }
+  const parsed = NotesBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: "Validation failed",
+        validationErrors: parsed.error.flatten().fieldErrors,
+      },
+      { status: 400 }
+    );
+  }
 
-    if (Array.isArray(body.tags)) {
-      if (body.tags.length > 10) {
-        return NextResponse.json(
-          { error: "Maximum 10 tags allowed" },
-          { status: 400 }
-        );
-      }
-      sanitizedTags = body.tags
-        .map((tag) => sanitizeInput(String(tag)))
-        .filter((tag) => tag.length > 0 && tag.length <= 30);
-    }
+  const { notes, tags } = parsed.data;
 
+  // Coerce undefined → null / [] so Prisma always receives defined values.
+  const sanitizedNotes: string | null = notes ?? null;
+  const sanitizedTags: string[] = tags ?? [];
+
+  try {
     const updated = await prisma.registration.update({
       where: { id: registrationId },
       data: {
@@ -103,7 +139,7 @@ export async function PATCH(
         tags: updated.tags,
       },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Failed to update contributor notes" },
       { status: 500 }
