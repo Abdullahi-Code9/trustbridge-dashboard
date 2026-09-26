@@ -151,7 +151,98 @@ output {
 
 ---
 
-## Pagination and Infinite Scroll
+## Request ID Contract
+
+### Overview
+
+Every API request is assigned an opaque `x-request-id` header value — a UUID v4 — that travels through the request/response lifecycle and can be surfaced in UI error messages so users can relay it to support. The utilities live in [`src/lib/request-id.ts`](../src/lib/request-id.ts).
+
+### Generation
+
+`generateRequestId()` produces a UUID v4 using `crypto.randomUUID()` (available in Node.js 14.17+, Edge Runtime, and all modern browsers) with a manual `crypto.getRandomValues()` fallback for older Node 18.x environments:
+
+```typescript
+import { generateRequestId } from "@/lib/request-id";
+
+const requestId = generateRequestId();
+// → "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+```
+
+### Middleware propagation
+
+Middleware should read an incoming `x-request-id` header (forwarded by a load balancer or upstream proxy) or generate a fresh one, then forward it on both the downstream request and the response:
+
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { generateRequestId, extractRequestId } from "@/lib/request-id";
+
+export function middleware(request: NextRequest) {
+  // Honour an upstream-supplied ID, otherwise mint a new one
+  const requestId = extractRequestId(request.headers) ?? generateRequestId();
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  // Echo the ID back so clients and CDNs can correlate logs
+  response.headers.set("x-request-id", requestId);
+  return response;
+}
+```
+
+`extractRequestId()` validates that the incoming value matches the UUID v4 format and returns `null` for absent or malformed values — preventing header injection from propagating into logs.
+
+### Structured log correlation
+
+Pass the request ID in the `details` field of every structured log entry so log aggregators can group all events for a single request:
+
+```typescript
+import { StructuredLogger } from "@/lib/logger";
+import { extractRequestId } from "@/lib/request-id";
+
+const logger = new StructuredLogger("api.register");
+
+export async function POST(request: NextRequest) {
+  const requestId = extractRequestId(request.headers);
+
+  logger.info("incoming_request", {
+    method: "POST",
+    pathname: "/api/register",
+    requestId,
+  });
+
+  // ... handler logic ...
+}
+```
+
+### UI display — error reference IDs
+
+[`src/components/ErrorFallback.tsx`](../src/components/ErrorFallback.tsx) surfaces the request ID (or Next.js error `digest`) as a **Reference ID** so users can copy it when filing a support report:
+
+```
+Reference ID: f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
+Pass the ID explicitly when you have it:
+
+```tsx
+<ErrorFallback error={error} reset={reset} requestId={requestId} />
+```
+
+When no `requestId` prop is provided, `ErrorFallback` falls back to `error.digest` (Next.js's server-error fingerprint), so error boundaries always show a correlatable reference ID without exposing raw stack traces to users.
+
+### Validation
+
+`isValidRequestId(id)` checks that a string matches the UUID v4 pattern. Use it before including any header-supplied value in logs:
+
+```typescript
+import { isValidRequestId } from "@/lib/request-id";
+
+const raw = request.headers.get("x-request-id");
+const safeId = raw && isValidRequestId(raw) ? raw : null;
+```
+
+---
 
 ### Overview
 
@@ -290,3 +381,76 @@ If you have existing offset-based pagination, migrate by:
 3. Update backend if needed to support cursor-based pagination
 
 The `/api/contributors/paginated` endpoint is new and coexists with the existing `/api/contributors` (non-paginated list). Gradually migrate consumers.
+
+---
+
+## Rate Limiting
+
+### Overview
+
+`POST /api/check` enforces a per-IP sliding-window rate limit to prevent Horizon
+API abuse. The limiter is implemented in `src/lib/rate-limit.ts` and controlled
+by two environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RATE_LIMIT_WINDOW_MS` | `60000` (1 min) | Duration of the sliding window in ms |
+| `RATE_LIMIT_MAX_REQUESTS` | `10` | Maximum requests per IP per window |
+
+Requests that exceed the limit receive `429 Too Many Requests` with a
+`Retry-After: <seconds>` header.
+
+### ⚠️ Process-local enforcement — multi-instance caveat
+
+**The rate-limit store is in-process memory.** It is not shared across Node.js
+processes, server replicas, or serverless function invocations.
+
+Concretely:
+
+- A horizontally scaled deployment (multiple Vercel containers, a Kubernetes
+  replica set, a PM2 cluster) allows up to
+  `RATE_LIMIT_MAX_REQUESTS × <instance count>` requests from a single IP before
+  any one process throttles it.
+- Serverless cold-starts reset the counter. A burst that triggers several cold
+  invocations simultaneously each sees a fresh, empty store.
+- The limit is a **best-effort per-process guardrail**, not a hard cluster-wide
+  cap.
+
+This is an accepted trade-off for the default single-process deployment. Operators
+running multi-instance setups should apply one or more of the mitigations below.
+
+### Mitigations
+
+| Approach | Notes |
+|----------|-------|
+| **CDN / edge rate limiting** | Recommended for any multi-instance deployment. Vercel WAF, Cloudflare Rate Limiting, and AWS WAF all support per-IP sliding windows in front of the origin. This is the most reliable option and adds no latency to successful requests. |
+| **Sticky sessions (IP affinity)** | Instructs the load balancer to route the same client IP to the same origin instance. The in-process store then sees every request from that IP. Does not protect against serverless cold-starts. |
+| **Redis-backed store** | Replaces the in-process `Map` in `src/lib/rate-limit.ts` with a shared atomic counter (e.g. [`@upstash/ratelimit`](https://github.com/upstash/ratelimit)). Provides exact enforcement across all instances. Requires `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` — see `docs/ENVIRONMENT.md` for an example migration snippet. |
+| **Lower `RATE_LIMIT_MAX_REQUESTS`** | Reduces worst-case over-allowance on small clusters where the instance count is bounded and known. |
+
+### Logging rate-limit events
+
+When a request is rejected the route returns a structured `429` response.
+Enable `DEBUG=true` to log per-IP sliding-window state on every check request:
+
+```bash
+DEBUG=true npm run dev
+```
+
+Structured log entry emitted on rejection:
+
+```json
+{
+  "timestamp": "2025-01-15T10:30:45.123Z",
+  "level": "warn",
+  "context": "api.check",
+  "message": "rate_limit_exceeded",
+  "details": {
+    "ip": "203.0.113.42",
+    "retryAfter": 37
+  }
+}
+```
+
+Do not log raw IP addresses in environments subject to GDPR or similar
+regulations without appropriate pseudonymisation.

@@ -9,6 +9,10 @@ The `docker-compose.yml` file defines a containerized development stack with:
 - **PostgreSQL 16** — Database server for TrustBridge registrations
 - **Adminer** — Web UI for database management and inspection
 
+Compose initializes the `trustbridge_app` runtime role from
+`docker/postgres/init-roles.sql`. The `trustbridge` role remains the local
+admin/migration role and bypasses RLS; do not use it in the application.
+
 ## Prerequisites
 
 - [Docker](https://www.docker.com/products/docker-desktop) (20.10+)
@@ -49,6 +53,12 @@ Set the `DATABASE_URL` in `.env.local`:
 DATABASE_URL="postgresql://trustbridge:trustbridge-dev-password@localhost:5432/trustbridge_dashboard?schema=public"
 ```
 
+For the application, use the restricted role and set the tenant session value:
+
+```bash
+DATABASE_URL="postgresql://trustbridge_app:trustbridge-app-dev-password@localhost:5432/trustbridge_dashboard?schema=public&options=-c%20app.maintainer_org_id%3Ddefault"
+```
+
 ### 4. Initialize the database
 
 From the project root, run:
@@ -80,6 +90,9 @@ Adminer is available at [http://localhost:8080](http://localhost:8080).
 - Password: `trustbridge-dev-password`
 - Database: `trustbridge_dashboard`
 
+Use the admin/migration login above for Adminer. The runtime login is
+`trustbridge_app` with password `trustbridge-app-dev-password`.
+
 ### Using psql
 
 Connect to PostgreSQL directly:
@@ -94,6 +107,40 @@ docker-compose exec postgres psql -U trustbridge -d trustbridge_dashboard
 docker-compose logs -f postgres
 docker-compose logs -f postgres-admin
 ```
+
+## Backup and restore drill
+
+> Never commit database dumps to git. PostgreSQL contains user identity data, GitHub usernames, and wallet addresses; treat dumps as sensitive PII.
+
+### Create a dump from the local Postgres container
+
+```bash
+docker-compose exec postgres pg_dump -U trustbridge -d trustbridge_dashboard --format=custom --file=/tmp/trustbridge_dashboard.pg_dump
+```
+
+To copy the dump off the container for safekeeping:
+
+```bash
+docker cp trustbridge-postgres:/tmp/trustbridge_dashboard.pg_dump ./artifacts/trustbridge_dashboard.pg_dump
+```
+
+### Restore a dump into a fresh local database
+
+```bash
+rm -rf ./artifacts && mkdir -p ./artifacts
+docker cp ./artifacts/trustbridge_dashboard.pg_dump trustbridge-postgres:/tmp/trustbridge_dashboard.pg_dump
+docker-compose exec postgres pg_restore --clean --if-exists -U trustbridge -d trustbridge_dashboard /tmp/trustbridge_dashboard.pg_dump
+```
+
+### Restore after a full stack reset
+
+```bash
+docker-compose down -v
+# Recreate the database from the dump
+# Note: use a fresh volume or existing data as appropriate
+```
+
+For a clean restore path, prefer a dedicated backup job or a scheduled `pg_dump` to an encrypted object store. Local development may use `pg_dump` directly; production MUST not keep plaintext dumps in the repo or on a shared workstation.
 
 ## Stopping and Cleanup
 
@@ -168,3 +215,10 @@ All configuration is in `docker-compose.yml`. For development, the defaults are:
 **Do not use these credentials in production.** For production deployments, use managed database services (AWS RDS, Google Cloud SQL, Neon, Vercel Postgres, etc.) and follow your provider's security guidelines.
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for production setup.
+
+## Connection Pooling & PgBouncer Notes
+
+The local Docker Compose environment runs standard PostgreSQL 16 on port 5432. PgBouncer is not required for local development.
+
+- Default connection string includes `connection_limit=5`.
+- For production setups using external PgBouncer (e.g. Supabase pooler on port 6543, Neon, or AWS RDS Proxy), refer to [docs/PRISMA_POOL_TUNING.md](./PRISMA_POOL_TUNING.md).

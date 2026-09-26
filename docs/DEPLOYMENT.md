@@ -105,62 +105,101 @@ Update or create OAuth App:
 
 ---
 
-## Durable queue worker
+## Backup and restore drill (Docker Compose)
 
-The background recheck queue (`src/lib/background-queue.ts`) normally runs
-in-process inside the Next.js server. For long-running or high-volume Wave
-operations you can run the queue worker as a **separate process** so job
-processing is not tied to a single serverless invocation.
+Use the same Postgres container defined in [DOCKER_COMPOSE.md](./DOCKER_COMPOSE.md) for a local recovery drill. This is a write-up, not a production substitute for automated backups.
 
-### Start the worker
+### 1) Create a dump
 
 ```bash
-npm run worker
+docker-compose exec postgres pg_dump -U trustbridge -d trustbridge_dashboard --format=custom --file=/tmp/trustbridge_dashboard.pg_dump
 ```
 
-This runs `npx tsx scripts/worker.mjs`, which:
-
-1. Validates that `DATABASE_URL` and `NEXTAUTH_SECRET` are set.
-2. Loads `src/lib/queue-worker.ts` (registers `recheck.batch` and
-   `recheck.single` handlers on the shared `backgroundQueue`).
-3. Keeps the process alive and processes queued jobs until `SIGINT`/`SIGTERM`.
-
-### Environment variables
-
-The worker reads the same variables as the Next.js app. Export them before
-starting, or use a `.env` loader such as `dotenv-cli`:
+### 2) Copy the dump off the container
 
 ```bash
-npx dotenv-cli -e .env.local -- npm run worker
+docker cp trustbridge-postgres:/tmp/trustbridge_dashboard.pg_dump ./artifacts/trustbridge_dashboard.pg_dump
 ```
 
-### Production deployment
-
-On Vercel the worker **cannot** run as a persistent process (serverless
-functions are ephemeral). For persistent queue processing:
-
-- Deploy the worker on a long-running host (Railway, Fly.io, EC2, etc.)
-- Point it at the same `DATABASE_URL` and environment variables.
-- Use a process supervisor (systemd, PM2, Docker restart policy) to keep it
-  alive and restart it on failure.
+### 3) Restore into a fresh database
 
 ```bash
-# Example PM2 start
-pm2 start "npm run worker" --name trustbridge-worker
+docker-compose exec postgres createdb -U trustbridge trustbridge_dashboard
+
+docker cp ./artifacts/trustbridge_dashboard.pg_dump trustbridge-postgres:/tmp/trustbridge_dashboard.pg_dump
+docker-compose exec postgres pg_restore --clean --if-exists -U trustbridge -d trustbridge_dashboard /tmp/trustbridge_dashboard.pg_dump
 ```
 
-### Graceful shutdown
+### 4) Re-run migrations after restore
 
-The worker catches `SIGINT` and `SIGTERM`, waits 2 s for in-flight jobs to
-finish, then exits cleanly.
+```bash
+DATABASE_URL="postgresql://trustbridge:trustbridge-dev-password@localhost:5432/trustbridge_dashboard?schema=public" npm run db:deploy
+```
 
----
+> Never commit dump files or leave them in a shared working tree. These dumps may contain GitHub usernames, wallet addresses, registration history, and other personal data. Use encrypted storage or a managed backup service for production.
 
 ## Monitoring & limits
 
+- **Grafana Dashboards & Metrics** — import ready-made dashboards in [docs/grafana/](./grafana/README.md) ([Overview JSON](./grafana/trustbridge-overview.json) / [JSON API JSON](./grafana/trustbridge-json-api.json)) for live payout readiness and health monitoring.
 - **Horizon rate limits** — batch re-check queries one account per registration; large Waves may need throttling (future enhancement)
 - **Vercel serverless timeout** — default 10s on Hobby; batch re-check may need pagination for 100+ contributors
 - **Database connections** — use connection pooling (Neon pooler, Supabase pooler, or Prisma Accelerate)
+
+---
+
+## Maintenance mode
+
+Use maintenance mode when deploying during a Wave, running a migration, or
+otherwise doing work that must not race with maintainer writes.
+
+### Turning it on / off
+
+Set the **`MAINTENANCE`** environment variable to a truthy value (`1`, `true`,
+`on`, `yes`, `enabled`) and redeploy (or, on Vercel, edit the env var and
+redeploy). Unset it (or set it to `0`) to turn maintenance mode off.
+
+`MAINTENANCE` is intentionally **env-only**. It is the one switch that must keep
+working when the database is down, so it is never gated behind a DB flag — a
+maintainer can always disable it from the platform's env settings. Operators
+running with `FEATURE_FLAGS_DB_ENABLED` additionally have the `maintenance_mode`
+feature flag (`FeatureFlag` row or `FEATURE_FLAG_MAINTENANCE_MODE` env), which
+composes with `MAINTENANCE` (either one being on turns it on).
+
+Optional: **`MAINTENANCE_MESSAGE`** overrides the banner / 503 body text.
+
+### What it does
+
+| Surface | Behaviour while `MAINTENANCE` is on |
+|---|---|
+| Every page | Amber banner at the top (`src/components/MaintenanceBanner.tsx`) |
+| `GET` / `HEAD` on any route | Unchanged — **reads stay up** |
+| `POST` / `PUT` / `PATCH` / `DELETE` under `/api/*` | `503` `{ "error": "maintenance_mode" }` with `Retry-After: 120`, from `src/middleware.ts` |
+| `GET /api/health` | Still `200` — probes and uptime checks are unaffected |
+| `/api/auth/*` | Exempt — sign-in keeps working |
+| `/api/check` | Exempt — a pure Horizon read (POST only to keep the address out of logs); the registration page keeps validating addresses |
+| `/api/webhooks/*` | Exempt — GitHub / trustbridge-action deliveries are **not** dropped; they land and are processed normally |
+
+### Caveats to handle separately
+
+- **Scheduled jobs (cron).** Cron requests are not routed through the Next.js
+  middleware, so `/api/contract-sync`, email nudges, etc. **continue to run**
+  during maintenance. If a deploy needs them paused, disable the cron trigger
+  at the platform (Vercel Cron / GitHub Actions schedule) or set `CRON_SECRET`
+  to a value the scheduler doesn't have for the duration.
+- **Webhook side effects.** Because webhooks are exempt, a delivery received
+  mid-deploy will still write to the database. That is deliberate (retries are
+  finite and data would be lost otherwise) — factor it into migration ordering.
+- **In-flight background queue jobs** already `processing` when the deploy
+  starts are not interrupted; only the *enqueue* endpoints are blocked.
+
+### Validate
+
+```bash
+npm test -- middleware
+```
+
+covers `src/lib/maintenance.ts` and the middleware gate
+(`tests/unit/middleware-maintenance.test.ts`).
 
 ---
 
@@ -194,6 +233,67 @@ jobs:
 
 ## Related docs
 
+- [Grafana dashboards & metrics](./grafana/README.md)
 - [Setup guide](./SETUP.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Contributing](./CONTRIBUTING.md)
+
+---
+
+## Background Worker Process
+
+For durable background processing (batch rechecks across all contributors,
+single-contributor rechecks, and other async tasks), TrustBridge uses a
+**database-backed queue** (`QueueJob` table in PostgreSQL) so jobs survive
+application restarts and serverless cold-starts.
+
+### Running the worker
+
+```bash
+npm run worker
+```
+
+This executes `scripts/worker.mjs`, which loads `src/lib/queue-worker.ts`
+(registers `recheck.batch` and `recheck.single` handlers) and calls
+`runWorker()`, which loops until `SIGINT`/`SIGTERM`.
+
+### Environment variables
+
+The worker needs the same variables as the Next.js app. Export them before
+starting, or use a `.env` loader:
+
+```bash
+npx dotenv-cli -e .env.local -- npm run worker
+```
+
+Required at minimum: `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`,
+`GITHUB_MAINTAINER_ORG`, `NEXT_PUBLIC_HORIZON_URL`.
+
+### Architecture & characteristics
+
+1. **Durable persistence** — Jobs are enqueued into PostgreSQL with status
+   `pending`. They survive deployments and server restarts without loss.
+2. **Atomic claiming** — Workers claim jobs with
+   `UPDATE ... WHERE status = 'pending'`, preventing duplicate processing when
+   multiple instances run in parallel.
+3. **Poison-message handling** — If a job throws, it is marked `failed` with
+   the error persisted in the database. The worker continues with subsequent
+   jobs.
+4. **Graceful shutdown** — `SIGINT`/`SIGTERM` signals the loop to stop; the
+   in-flight job finishes before the process exits.
+
+### Production deployment
+
+On Vercel the worker **cannot** run as a persistent process (functions are
+ephemeral). For persistent queue processing, run it on a long-lived host:
+
+```bash
+# Example: PM2
+pm2 start "npm run worker" --name trustbridge-worker
+
+# Example: Docker (with env file)
+docker run --env-file .env.production your-image npm run worker
+```
+
+Supported platforms: Railway, Fly.io, Render, EC2, any host that keeps a
+Node process alive.

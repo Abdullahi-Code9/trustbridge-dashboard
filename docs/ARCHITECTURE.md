@@ -102,6 +102,17 @@ Non-maintainers hitting `/dashboard` are redirected to `/register?error=maintain
 
 See `prisma/schema.prisma`.
 
+### PostgreSQL tenant isolation
+
+All persisted models include `maintainerOrgId`. The migration
+`20260828000000_add_maintainer_org_rls` enables and forces RLS with a policy
+that compares this column to `current_setting('app.maintainer_org_id', true)`.
+The runtime Prisma role must receive that setting through its connection URL;
+an unset setting returns no rows. `trustbridge_migrator` is a separate
+`BYPASSRLS` role used only by Prisma migrations. See
+[`PRISMA_POOL_TUNING.md`](./PRISMA_POOL_TUNING.md) for role creation, grants,
+and connection examples.
+
 ```
 User
 ├── githubId (unique)
@@ -334,6 +345,59 @@ The write-through path is now implemented (`src/lib/soroban-register.ts`), wired
 ### Out of scope for this iteration
 
 End-to-end/browser coverage (e.g. Playwright) for the event timeline panel and any future write-through flow is a deliberate follow-up, not a gap in this pass — this repo currently has no Playwright/e2e harness, and adding one is a separate infrastructure change (new CI browser setup) tracked independently of this documentation and unit/API test work.
+
+---
+
+### Transactional outbox for Soroban write-through (#199)
+
+To ensure reliable write-through to Soroban without losing registrations during chain or RPC outages:
+
+1. **Transactional Outbox (`SorobanOutbox`):** During registration (`POST /api/register`), a `SorobanOutbox` record (`status: PENDING`, `action: "register"`) is inserted into PostgreSQL inside the same transaction (`enqueueSorobanOutbox()`) as `prisma.registration.upsert()`.
+2. **Outbox Worker (`processSorobanOutbox()`):** A background worker (`src/lib/soroban-outbox-worker.ts`) periodically fetches pending outbox items and invokes `mirrorRegistrationToSoroban()`.
+3. **At-Least-Once Delivery & Audit Trail:** On success, outbox records transition to `COMPLETED`. On failures, outbox records retry with exponential backoff up to `maxAttempts` (default 5). If `maxAttempts` is exhausted, the status is set to `FAILED` and an audit log (`soroban_outbox_exhausted`) is recorded.
+
+---
+
+### Soroban Event Cursor & Backfill (#198)
+
+To support historical event timeline syncing without missing past ledger events:
+
+1. **Persistent Event Cursor (`SorobanEventCursor`):** Stores event paging tokens and cursors per `maintainerOrgId` + `eventType` in `prisma.sorobanEventCursor`.
+2. **Background Backfill (`backfillSorobanEvents()`):** `src/lib/soroban-events-backfill.ts` processes historical events idempotently and persists the latest paging token.
+3. **Non-Blocking:** Backfills run asynchronously in background workers without blocking HTTP requests.
+
+---
+
+## CORS Policy
+
+The trustbridge-action runs **server-side** (Node.js fetch in GitHub Actions), so CORS does not apply to its calls. However, the public endpoints `/api/actions/lookup` and `/api/check` may be called from browser-based tools (Swagger UI, custom scripts), so we lock them down defensively.
+
+### Configuration
+
+CORS headers are applied via `next.config.mjs` → `headers()`:
+
+| Header | Value |
+|--------|-------|
+| `Access-Control-Allow-Origin` | `https://github.com` |
+| `Access-Control-Allow-Methods` | `GET, POST, OPTIONS` |
+| `Access-Control-Allow-Headers` | `Content-Type, Authorization, X-Cache-Bypass` |
+| `Access-Control-Max-Age` | `86400` (24 hours) |
+| `Vary` | `Origin` |
+
+### Security constraints
+
+- **Single origin, no multi-value lists.** The CORS specification requires `Access-Control-Allow-Origin` to specify either a single origin or `*`. Browsers reject comma-separated origin lists. Next.js statically sets `ALLOWED_ORIGIN`. Dynamic origin checking across multiple domains can be handled dynamically in middleware or route handlers if needed.
+- **No wildcard (`*`) with credentials.** The allowed origin is explicitly specified.
+- **Default deny.** Only the two paths above receive CORS headers. Authenticated endpoints (`/api/register`, `/api/contributors`, `/api/stats`) are same-origin only.
+- **No credentials header.** `Access-Control-Allow-Credentials` is intentionally omitted — these endpoints don't use cookies.
+- **To configure the allowed origin**, update `ALLOWED_ORIGIN` in `next.config.mjs`.
+
+### Tests
+
+CORS configuration is tested in `tests/unit/cors.test.ts`:
+- Verifies correct origins are allowed
+- Verifies no wildcard origin
+- Verifies authenticated endpoints are excluded
 
 ---
 

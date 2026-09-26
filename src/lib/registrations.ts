@@ -31,7 +31,7 @@ type PersistedRegistration = Pick<
 >;
 
 type RegistrationWithUserRow = Registration & {
-  user: { githubUsername: string };
+  user: { githubUsername: string; banned?: boolean; banReason?: string | null };
 };
 
 /** Readiness for any persisted registration row (with or without its user join). */
@@ -62,6 +62,8 @@ export function toContributorRow(row: RegistrationWithUserRow): ContributorRow {
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
     horizonLatencyMs: row.horizonLatencyMs ?? null,
     readiness: readinessOf(row),
+    banned: row.user.banned ?? false,
+    banReason: row.user.banReason ?? undefined,
     walletProof: buildWalletProofInfo(
       row.stellarAddress,
       row.user.githubUsername
@@ -90,6 +92,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     STATS_CACHE_KEY,
     async () => {
       const registrations = await prisma.registration.findMany({
+        where: { deletedAt: null },
         select: {
           funded: true,
           trustlineReady: true,
@@ -133,16 +136,17 @@ export async function getContributors(
 
   const [registrations, total] = await Promise.all([
     prisma.registration.findMany({
+      where: { deletedAt: null },
       include: {
         user: {
-          select: { githubUsername: true },
+          select: { githubUsername: true, banned: true, banReason: true },
         },
       },
       orderBy: { updatedAt: "desc" },
       skip,
       take: limit,
     }),
-    prisma.registration.count(),
+    prisma.registration.count({ where: { deletedAt: null } }),
   ]);
 
   return {
@@ -183,6 +187,7 @@ export async function getContributorsPaginated(
 
   // Fetch normalizedLimit + 1 to determine if there are more records
   const registrations = await prisma.registration.findMany({
+    where: { deletedAt: null },
     include: {
       user: {
         select: { githubUsername: true },
@@ -322,7 +327,9 @@ async function recheckAllWithConcurrency(
 }
 
 export async function refreshAllContributors(): Promise<RefreshAllSummary> {
-  const registrations = await prisma.registration.findMany();
+  const registrations = await prisma.registration.findMany({
+    where: { deletedAt: null },
+  });
 
   const { diffs, errors } = await recheckAllWithConcurrency(
     registrations,
@@ -350,13 +357,15 @@ export interface RefreshContributorResult {
 export async function refreshContributor(
   id: string
 ): Promise<RefreshContributorResult | null> {
-  const registration = await prisma.registration.findUnique({ where: { id } });
+  const registration = await prisma.registration.findFirst({
+    where: { id, deletedAt: null },
+  });
   if (!registration) return null;
 
   const { diff } = await recheckRegistration(registration);
 
-  const updated = await prisma.registration.findUnique({
-    where: { id },
+  const updated = await prisma.registration.findFirst({
+    where: { id, deletedAt: null },
     include: { user: { select: { githubUsername: true } } },
   });
 
