@@ -105,6 +105,57 @@ Update or create OAuth App:
 
 ---
 
+## Durable queue worker
+
+The background recheck queue (`src/lib/background-queue.ts`) normally runs
+in-process inside the Next.js server. For long-running or high-volume Wave
+operations you can run the queue worker as a **separate process** so job
+processing is not tied to a single serverless invocation.
+
+### Start the worker
+
+```bash
+npm run worker
+```
+
+This runs `npx tsx scripts/worker.mjs`, which:
+
+1. Validates that `DATABASE_URL` and `NEXTAUTH_SECRET` are set.
+2. Loads `src/lib/queue-worker.ts` (registers `recheck.batch` and
+   `recheck.single` handlers on the shared `backgroundQueue`).
+3. Keeps the process alive and processes queued jobs until `SIGINT`/`SIGTERM`.
+
+### Environment variables
+
+The worker reads the same variables as the Next.js app. Export them before
+starting, or use a `.env` loader such as `dotenv-cli`:
+
+```bash
+npx dotenv-cli -e .env.local -- npm run worker
+```
+
+### Production deployment
+
+On Vercel the worker **cannot** run as a persistent process (serverless
+functions are ephemeral). For persistent queue processing:
+
+- Deploy the worker on a long-running host (Railway, Fly.io, EC2, etc.)
+- Point it at the same `DATABASE_URL` and environment variables.
+- Use a process supervisor (systemd, PM2, Docker restart policy) to keep it
+  alive and restart it on failure.
+
+```bash
+# Example PM2 start
+pm2 start "npm run worker" --name trustbridge-worker
+```
+
+### Graceful shutdown
+
+The worker catches `SIGINT` and `SIGTERM`, waits 2 s for in-flight jobs to
+finish, then exits cleanly.
+
+---
+
 ## Monitoring & limits
 
 - **Horizon rate limits** — batch re-check queries one account per registration; large Waves may need throttling (future enhancement)

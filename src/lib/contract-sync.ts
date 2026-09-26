@@ -99,7 +99,7 @@ async function fetchContractRegistrations(): Promise<{
 async function syncContractRegistrations(
   contractRegistrations: ContractRegistration[]
 ): Promise<{ created: number; updated: number; unchanged: number }> {
-  const created = 0;
+  let created = 0;
   let updated = 0;
   let unchanged = 0;
 
@@ -129,6 +129,7 @@ async function syncContractRegistrations(
         stellarAddress: contractReg.stellarAddress,
         githubUsername: contractReg.githubUsername,
       });
+      created++;
       continue;
     }
 
