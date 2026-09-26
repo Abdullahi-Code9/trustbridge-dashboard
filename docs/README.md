@@ -14,3 +14,4 @@
 | [VISUAL_REGRESSION.md](./VISUAL_REGRESSION.md) | Visual regression testing & goldens |
 | [SENTRY.md](./SENTRY.md) | Error tracking setup |
 | [LOGGING_AND_PAGINATION.md](./LOGGING_AND_PAGINATION.md) | Logging and cursor pagination |
+| [PERFORMANCE_TESTING.md](./PERFORMANCE_TESTING.md) | k6 smoke tests and load testing guide |

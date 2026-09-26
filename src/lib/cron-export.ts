@@ -7,6 +7,7 @@ import { StructuredLogger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { toContributorRow } from "@/lib/registrations";
 import { getStaleContributors, isExportStale } from "@/lib/stale-export";
+import { trackServerCsvExported } from "@/lib/analytics";
 import type { ContributorRow } from "@/types";
 
 const logger = new StructuredLogger("cron-export");
@@ -173,6 +174,12 @@ export async function runCronExport(
         emailSent,
         durationMs,
       },
+    });
+
+    // Track analytics event (no-op when POSTHOG_API_KEY is absent)
+    trackServerCsvExported({
+      rowCount: totalContributors,
+      triggeredBy: options.actorId ?? "scheduler:cron",
     });
 
     lastResult = {

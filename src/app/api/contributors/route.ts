@@ -9,6 +9,7 @@ import { getContributors } from "@/lib/registrations";
 import { backgroundQueue } from "@/lib/background-queue";
 import { buildStalenessSummary } from "@/lib/stale-export";
 import { captureException } from "@/lib/sentry";
+import { trackServerBatchRecheckStarted } from "@/lib/analytics";
 import type { ReadinessStatus } from "@/types";
 
 export const runtime = "nodejs";
@@ -124,6 +125,11 @@ export async function POST(request: NextRequest) {
         jobId,
         idempotencyKey: customIdempotencyKey ?? lockKey,
       },
+    });
+
+    // Track analytics event (no-op when POSTHOG_API_KEY is absent)
+    trackServerBatchRecheckStarted({
+      initiatedBy: session.user.id,
     });
 
     return NextResponse.json(
