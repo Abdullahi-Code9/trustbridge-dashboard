@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { NetworkStatusPanel } from "@/components/NetworkStatusPanel";
 import { SessionPanel } from "@/components/SessionPanel";
+import { RestorePanel } from "@/components/RestorePanel";
 import {
   Card,
   CardContent,
@@ -171,6 +172,10 @@ export default function MaintainerSettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="mb-8">
+        <RestorePanel />
+      </div>
 
       <Card>
         <CardHeader>

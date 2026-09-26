@@ -28,11 +28,14 @@ import {
 import { FreezeWindowBanner } from "@/components/FreezeWindowBanner";
 import { countReadyContributors } from "@/lib/contributors";
 import { useJobProgress } from "@/lib/use-job-progress";
+// Single data-fetching strategy (#307): usePaginatedContributors drives both
+// the prev/next pager and the panels that need the full contributor list.
+// useInfiniteContributors was removed to eliminate the duplicate
+// /api/contributors/paginated traffic that existed when both hooks were mounted.
 import {
-  flattenContributorPages,
-  useInfiniteContributors,
-} from "@/lib/use-infinite-contributors";
-import { usePaginatedContributors } from "@/lib/use-paginated-contributors";
+  usePaginatedContributors,
+  useAllContributors,
+} from "@/lib/use-paginated-contributors";
 import type {
   ContributorRow,
   NetworkConfig,
@@ -47,13 +50,13 @@ interface BatchRecheckResponse {
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
-  const contributorsQuery = useInfiniteContributors();
   const { event, isStreaming, startProgress } = useJobProgress();
 
-  // Cursor pager — provides an accessible prev/next alternative to infinite scroll.
-  // The infinite-scroll data is still used by WaveReadinessBar, WavePrepWorkspace,
-  // and DisputePanel which all need the full contributor list.
+  // Single data-fetching strategy (#307): one paginated hook for the table/pager,
+  // one hook that fetches all contributors (no page limit) for panels that need the
+  // full list (WaveReadinessBar, WavePrepWorkspace, DisputePanel).
   const pager = usePaginatedContributors(25);
+  const allContributorsQuery = useAllContributors();
 
   const recheckMutation = useMutation({
     mutationFn: async () => {
@@ -172,24 +175,7 @@ export default function DashboardPage() {
     },
   });
 
-  const freezeQuery = useQuery({
-    queryKey: ["freeze-status"],
-    queryFn: async () => {
-      const response = await fetch("/api/freeze-status");
-      if (!response.ok) return { active: false };
-      return (await response.json()) as {
-        active: boolean;
-        reason?: string | null;
-        start?: string | null;
-        end?: string | null;
-      };
-    },
-    // Re-check every 30 s so the banner disappears automatically once the
-    // window expires without requiring a manual page refresh.
-    refetchInterval: 30_000,
-  });
-
-  const contributors = flattenContributorPages(contributorsQuery.data);
+  const contributors = allContributorsQuery.contributors;
   const readyCount = countReadyContributors(contributors);
   const staleness = buildStalenessSummaryClient(contributors);
 
@@ -262,8 +248,8 @@ export default function DashboardPage() {
         {recheckStatus ? `Batch re-check: ${recheckStatus}` : ""}
       </p>
 
-      {!contributorsQuery.isLoading &&
-        !contributorsQuery.isError &&
+      {!allContributorsQuery.isLoading &&
+        !allContributorsQuery.isError &&
         contributors.length > 0 && (
           <StaleDataBanner
             staleness={staleness}
@@ -319,7 +305,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {!contributorsQuery.isLoading && !contributorsQuery.isError && (
+      {!allContributorsQuery.isLoading && !allContributorsQuery.isError && (
         <div className="mb-8">
           <WavePrepWorkspace
             contributors={contributors}
@@ -351,9 +337,6 @@ export default function DashboardPage() {
             onBanToggle={async (githubUsername, action, reason) => {
               await banMutation.mutateAsync({ githubUsername, action, reason });
             }}
-            onLoadMore={() => void contributorsQuery.fetchNextPage()}
-            hasMore={Boolean(contributorsQuery.hasNextPage)}
-            isLoadingMore={contributorsQuery.isFetchingNextPage}
             recheckingId={
               recheckOneMutation.isPending
                 ? (recheckOneMutation.variables ?? null)
