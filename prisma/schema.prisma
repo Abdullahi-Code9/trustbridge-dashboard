@@ -31,6 +31,7 @@ model User {
   bannedAt        DateTime?
   banReason       String?
   bannedById      String?
+  checklistCompleted Json?      @default("{}")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -87,6 +88,7 @@ model Registration {
   notes               String?
   tags                String[]      @default([])
   disputeProof        DisputeProof?
+  checklistCompleted  Json?         @default("{}")
 
   @@index([trustlineReady])
   @@index([lastCheckedAt])

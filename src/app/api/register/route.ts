@@ -13,6 +13,7 @@ import {
 } from "@/lib/registration-insights";
 import { validateRegistrationInput } from "@/lib/register-validation";
 import { computeReadiness } from "@/lib/readiness";
+import { OnboardingChecklistState, parseChecklistState } from "@/types";
 import { captureException } from "@/lib/sentry";
 import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
 import { recordInitialAddress, recordAddressChange } from "@/lib/address-history";
@@ -187,10 +188,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Merge existing checklist state if available
-    const existingChecklist =
-      (userRegistration?.checklistCompleted as Record<string, boolean> | null) ??
-      {};
-    const updatedChecklist = {
+    const existingChecklist = parseChecklistState(
+      userRegistration?.checklistCompleted
+    );
+    const updatedChecklist: OnboardingChecklistState = {
       ...existingChecklist,
       register_address: true,
     };
@@ -390,14 +391,15 @@ export async function GET() {
   });
 
   if (!registration || registration.deletedAt) {
-    let checklistCompleted: Record<string, boolean> = {};
-    if (prisma.user?.findUnique) {
+    let checklistCompleted: OnboardingChecklistState = {};
+    if (registration?.checklistCompleted) {
+      checklistCompleted = parseChecklistState(registration.checklistCompleted);
+    } else if (prisma.user?.findUnique) {
       const user = await prisma.user.findUnique({
         where: { id: session.user.id },
         select: { checklistCompleted: true },
       });
-      checklistCompleted =
-        (user?.checklistCompleted as Record<string, boolean> | null) ?? {};
+      checklistCompleted = parseChecklistState(user?.checklistCompleted);
     }
 
     return NextResponse.json({
@@ -416,8 +418,7 @@ export async function GET() {
     }
   );
 
-  const checklistCompleted =
-    (registration.checklistCompleted as Record<string, boolean> | null) ?? {};
+  const checklistCompleted = parseChecklistState(registration.checklistCompleted);
 
   return NextResponse.json({
     registration: {
