@@ -5,13 +5,21 @@ export type SorobanOutboxStatus = "pending" | "processing" | "sent" | "completed
 
 export interface SorobanOutboxEntry {
   id: string;
+  maintainerOrgId?: string;
+  action?: string;
   payload: unknown;
-  status: SorobanOutboxStatus;
+  status: string;
   attempts: number;
-  lastError?: string;
-  createdAt: string;
-  updatedAt: string;
+  maxAttempts?: number;
+  lastError?: string | null;
+  nextAttemptAt?: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
+
+export type SorobanOutboxSink = (
+  entry: SorobanOutboxEntry
+) => Promise<void> | void;
 
 export interface EnqueueSorobanOutboxOptions {
   /** Optional idempotency key so retries do not duplicate the mirror. */
@@ -24,34 +32,74 @@ export interface EnqueueSorobanOutboxOptions {
   sink?: SorobanOutboxSink;
 }
 
-export type SorobanOutboxSink = (
-  entry: SorobanOutboxEntry,
-) => Promise<void> | void;
-
-const outbox = new Map<string, SorobanOutboxEntry>();
-
-let sink: SorobanOutboxSink | undefined;
+const inMemoryOutbox = new Map<string, SorobanOutboxEntry>();
+let globalSink: SorobanOutboxSink | null = null;
 
 /**
- * Register the process-wide sink used to deliver outbox entries to Soroban.
- * The worker (scripts/worker.mjs) drains the same store via the exported
- * helpers below; keeping a single sink avoids a parallel subsystem.
+ * Register the process-wide sink used to deliver outbox entries to Soroban in unit tests.
  */
-export function setSorobanOutboxSink(next?: SorobanOutboxSink): void {
-  sink = next;
+export function setSorobanOutboxSink(sink?: SorobanOutboxSink | null): void {
+  globalSink = sink ?? null;
 }
 
 /**
- * Enqueue a Soroban mirror payload for asynchronous delivery.
+ * Resets the in-memory outbox Map between test runs to avoid stale singleton state.
+ */
+export function clearSorobanOutbox(): void {
+  inMemoryOutbox.clear();
+}
+
+export function getSorobanOutboxEntry(
+  id: string
+): SorobanOutboxEntry | undefined {
+  return inMemoryOutbox.get(id);
+}
+
+export function listSorobanOutbox(): SorobanOutboxEntry[] {
+  return Array.from(inMemoryOutbox.values());
+}
+
+/**
+ * Enqueue a registration write-through task into the Soroban outbox.
  *
  * Persists durable records to PostgreSQL via Prisma with an in-memory fallback.
  * Failures are surfaced (thrown) rather than swallowed so callers such as the
  * register route can report a real error instead of a silent no-op.
  */
 export async function enqueueSorobanOutbox(
-  payload: unknown,
-  options: EnqueueSorobanOutboxOptions = {},
-): Promise<SorobanOutboxEntry> {
+  arg1: any,
+  arg2?: any,
+  arg3?: any,
+  arg4?: any
+): Promise<SorobanOutboxEntry | any> {
+  let db: Prisma.TransactionClient | undefined;
+  let action = "register";
+  let payload: any;
+  let maintainerOrgId = "default";
+  let idempotencyKey: string | undefined;
+  let sinkOverride: SorobanOutboxSink | undefined;
+
+  // Support both (db, action, payload, maintainerOrgId) and (payload, options)
+  if (
+    arg1 &&
+    (arg1.sorobanOutbox ||
+      typeof arg1.$executeRaw === "function" ||
+      typeof arg2 === "string")
+  ) {
+    db = arg1;
+    action = arg2 ?? "register";
+    payload = arg3;
+    maintainerOrgId = arg4 ?? "default";
+  } else {
+    payload = arg1;
+    const options: EnqueueSorobanOutboxOptions = arg2 ?? {};
+    idempotencyKey = options.idempotencyKey;
+    action = options.action ?? "register";
+    maintainerOrgId = options.maintainerOrgId ?? "default";
+    db = options.db;
+    sinkOverride = options.sink;
+  }
+
   if (payload === undefined || payload === null) {
     throw new Error("enqueueSorobanOutbox: payload is required");
   }
@@ -121,8 +169,6 @@ export async function enqueueSorobanOutbox(
 
   outbox.set(entry.id, entry);
 
-  const activeSink = options.sink ?? sink;
-  if (activeSink) {
     try {
       await activeSink(entry);
       entry.status = "sent";
@@ -137,7 +183,7 @@ export async function enqueueSorobanOutbox(
         // Ignored
       }
     } catch (error) {
-      entry.status = "failed";
+      entry.status = "FAILED";
       entry.attempts += 1;
       entry.lastError = error instanceof Error ? error.message : String(error);
       entry.updatedAt = new Date().toISOString();
@@ -185,10 +231,20 @@ export async function getSorobanOutboxEntry(id: string): Promise<SorobanOutboxEn
   return outbox.get(id);
 }
 
-export function listSorobanOutbox(): SorobanOutboxEntry[] {
-  return Array.from(outbox.values());
+  // In-memory fallback if Prisma is not available and no sink is set
+  const entry: SorobanOutboxEntry = {
+    id,
+    maintainerOrgId,
+    action,
+    payload,
+    status: "PENDING",
+    attempts: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  inMemoryOutbox.set(id, entry);
+  return entry;
 }
 
-export function clearSorobanOutbox(): void {
-  outbox.clear();
-}
+export const processSorobanOutbox = workerProcessSorobanOutbox;
+export type { OutboxProcessOptions };

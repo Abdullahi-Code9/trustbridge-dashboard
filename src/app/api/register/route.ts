@@ -24,6 +24,7 @@ import {
   trackServerRegistrationCreated,
   trackServerRegistrationUpdated,
 } from "@/lib/analytics";
+import { recordRegistrationConflict } from "@/lib/maintainers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
